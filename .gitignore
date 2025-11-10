@@ -1,0 +1,262 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# Flask
+instance/
+.webassets-cache
+.env
+.flaskenv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploaded Videos and Media Files
+uploads/
+videos/*.mp4
+videos/*.avi
+videos/*.mkv
+videos/*.webm
+videos/*.mov
+videos/*.flv
+videos/*.wmv
+videos/*.m4v
+!videos/.gitkeep
+
+# Processed Data
+*.json
+!config.json
+!package.json
+subtitles/
+transcripts/
+summaries/
+
+# Temporary Files
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.backup
+*.swp
+*.swo
+*~
+tmp_*
+tmp_*.py
+tmp_*.txt
+tmp_*.conf
+tmp_*.service
+
+# OS Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Test Files
+test_*.py
+*_test.py
+tests/
+test/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Documentation Build
+docs/_build/
+site/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# Node modules (if any frontend tools are used)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Package files
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+
+# AI/ML Model Files (if any)
+*.h5
+*.pkl
+*.pickle
+*.pt
+*.pth
+*.onnx
+*.pb
+
+# Cache directories
+.cache/
+__pycache__/
+.pytest_cache/
+
+# Editor backup files
+*~
+*.swp
+*.swo
+.*.swp
+.*.swo
+
+# Temporary processing files
+processing/
+temp_audio/
+temp_video/
+
+# API Keys and Secrets
+secrets.py
+.secrets
+api_keys.txt
+*.key
+*.pem
+*.cert
+
+# Development and debug files
+debug.log
+error.log
+access.log
+*.debug
+
+# System files
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage reports
+.coverage
+coverage.xml
+*.cover
+.hypothesis/
+
+# Translations
+*.mo
+*.pot
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+target/
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# PEP 582
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/

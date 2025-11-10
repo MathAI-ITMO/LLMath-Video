@@ -1,0 +1,792 @@
+/*
+ * Basic style definitions for the video player prototype.
+ * The layout consists of a two‑column split: the primary player section
+ * on the left (75% width) and a sidebar on the right (25%). The video
+ * container maintains a 16:9 aspect ratio, and a lightly coloured panel
+ * underneath it serves as the area for uploading new videos and listing
+ * existing ones.
+ */
+
+/* Root variables allow for quick theme adjustments */
+:root {
+  --background-color: #fafafa;
+  --panel-background: #fff8e6;
+  --panel-border: #f6e8c6;
+  --highlight-border: #f0c16b;
+  --text-color: #333;
+  --secondary-text-color: #666;
+  --control-background: #ffffff;
+  --control-border: #ddd;
+  --control-hover: #f0f0f0;
+  --control-active: #e0e0e0;
+  --sidebar-background: #f5f5f5;
+  --sidebar-border: #e0e0e0;
+  --border-radius: 8px;
+  --transition-duration: 0.2s;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background-color: var(--background-color);
+  color: var(--text-color);
+  height: 100vh;
+  overflow: hidden;
+}
+
+.page-container {
+  display: flex;
+  height: 100%;
+}
+
+/* Player section occupies three quarters of horizontal space */
+.player-section {
+  flex: 3;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+/* Embedded mode: remove padding to avoid nested frames */
+body[data-embedded="true"] .player-section {
+  padding: 0;
+}
+
+body[data-embedded="true"] .page-container {
+  padding: 0;
+}
+
+/* Sidebar occupies one quarter of horizontal space */
+.sidebar {
+  flex: 1;
+  background-color: var(--sidebar-background);
+  border-left: 1px solid var(--sidebar-border);
+  padding: 16px;
+  box-sizing: border-box;
+  overflow: hidden; /* управляем прокруткой внутри панелей */
+}
+
+/* Tabs styling */
+.tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.tab-btn { padding: 6px 10px; border: 1px solid var(--control-border); background: #fff; border-radius: 6px; cursor: pointer; }
+.tab-btn.active { background: #fff4d0; border-color: var(--highlight-border); }
+.tab-panels { height: calc(100% - 38px); }
+.tab-panel { height: 100%; }
+
+/* Chat layout */
+.chat-container { display: flex; flex-direction: column; height: 100%; }
+.chat-messages { flex: 1; overflow: auto; border: 1px solid var(--control-border); border-radius: 6px; padding: 8px; background: #fff; }
+.chat-input-row { display: flex; gap: 8px; margin-top: 8px; }
+.chat-input { flex: 1; padding: 10px; border: 1px solid var(--control-border); border-radius: 6px; }
+.chat-send { padding: 10px 14px; border: 1px solid var(--control-border); border-radius: 6px; background: #fff; cursor: pointer; }
+.chat-send:hover { background: var(--control-hover); }
+
+/* Сообщения в чате */
+.msg { margin: 6px 0; font-size: 14px; line-height: 1.5; }
+.msg-student { max-width: 85%; background: #e8f1ff; border: 1px solid #d6e6ff; color: #222; padding: 8px 10px; border-radius: 12px; text-align: left; }
+.msg-lecturer { width: 90%; margin-left: 5%; margin-right: 5%; color: #222; text-align: left; }
+.msg img { max-width: 100%; border-radius: 8px; display: block; }
+
+/* Тултип для анализа кадра */
+.explain-tooltip { position: absolute; z-index: 4; background: #ffffff; border: 1px solid var(--control-border); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); padding: 6px 8px; display: none; align-items: center; gap: 8px; font-size: 13px; }
+.explain-btn { padding: 6px 10px; border: 1px solid var(--control-border); border-radius: 6px; background: #fff4d0; cursor: pointer; }
+.explain-btn:hover { filter: brightness(0.98); }
+
+/* Всплывающее мини-превью около точки клика */
+.annot-popover { position: absolute; z-index: 4; background: #ffffff; border: 1px solid var(--control-border); border-radius: 10px; box-shadow: 0 6px 18px rgba(0,0,0,0.2); padding: 8px 10px; max-width: 40%; font-size: 13px; line-height: 1.4; }
+.annot-popover .annot-close { position: absolute; top: 4px; right: 6px; border: none; background: transparent; cursor: pointer; font-size: 14px; color: #666; }
+.annot-popover .annot-close:hover { color: #000; }
+
+.about-content { white-space: normal; }
+.log-content { white-space: pre-wrap; background: #fff; border: 1px solid var(--control-border); border-radius: 6px; padding: 8px; height: 100%; overflow: auto; }
+
+/* Video wrapper maintains a 16:9 aspect ratio */
+.video-wrapper {
+  position: relative;
+  width: 100%;
+  padding-top: 56.25%; /* 16:9 aspect ratio (9/16 = 0.5625) */
+  background-color: #000;
+  border-radius: var(--border-radius);
+  overflow: hidden;
+}
+
+/* Unified panel container (stacked layout: video -> controls -> subtitles) */
+.panel-container { display: block; }
+
+/* Ensure the 16:9 main panel fills width and has 9/16 height */
+.aspect-16x9 { position: relative; width: 100%; aspect-ratio: 16/9; border-radius: var(--border-radius); overflow: hidden; background-color: var(--panel-background); border: 2px dashed var(--panel-border); }
+
+/* Overlay for processing */
+.processing-overlay { position: absolute; inset: 0; background: rgba(255,255,255,0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 16px; z-index: 3; }
+.processing-title { margin-top: 8px; font-weight: 600; }
+.processing-steps { margin-top: 12px; color: var(--secondary-text-color); font-size: 14px; }
+.processing-steps .step { opacity: 0.6; }
+.processing-steps .step.active { opacity: 1; font-weight: 600; }
+.processing-steps .step.done { opacity: 0.85; }
+.spinner { width: 40px; height: 40px; border: 4px solid #ddd; border-top-color: #f0c16b; border-radius: 50%; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.video-wrapper video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: #000;
+  object-fit: contain;
+}
+
+/* Control bar styling */
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 8px 12px;
+  background-color: var(--control-background);
+  border: 1px solid var(--control-border);
+  border-radius: var(--border-radius);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  flex-wrap: wrap;
+}
+
+.control-button {
+  border: none;
+  background-color: var(--control-background);
+  border-radius: var(--border-radius);
+  font-size: 16px;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: background-color var(--transition-duration);
+}
+
+.control-button:hover {
+  background-color: var(--control-hover);
+}
+
+.control-button:active {
+  background-color: var(--control-active);
+}
+
+.progress-bar {
+  flex: 1;
+  min-width: 100px;
+}
+
+.time-display {
+  font-size: 14px;
+  color: var(--secondary-text-color);
+  min-width: 100px;
+  text-align: right;
+}
+
+.volume-slider,
+.speed-select {
+  margin-left: 4px;
+}
+
+.control-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  color: var(--secondary-text-color);
+}
+
+/* Upload panel styles */
+.upload-panel {
+  margin-top: 16px;
+  background-color: var(--panel-background);
+  border: 2px dashed var(--panel-border);
+  border-radius: var(--border-radius);
+  padding: 20px;
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  transition: border-color var(--transition-duration), background-color var(--transition-duration);
+}
+
+.upload-panel.active {
+  border-color: var(--highlight-border);
+  background-color: #fff4d0;
+}
+
+.upload-instructions {
+  margin-bottom: 16px;
+  font-size: 15px;
+  text-align: center;
+  color: var(--secondary-text-color);
+}
+
+.file-select-trigger {
+  color: #1976d2;
+  text-decoration: underline;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.file-select-trigger:hover {
+  color: #1565c0;
+}
+
+.video-list-container {
+  width: 100%;
+  max-width: 600px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.video-list-container .video-filter,
+.video-list-container .video-list {
+  width: 100%;
+}
+
+.video-filter {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--control-border);
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  background: white;
+  transition: border-color 0.2s;
+}
+
+.video-filter:focus {
+  outline: none;
+  border-color: #1976d2;
+  box-shadow: 0 0 0 3px rgba(25, 118, 210, 0.1);
+}
+
+.video-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+  max-height: 300px;
+  overflow-y: auto;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+/* Thin scrollbar for video list */
+.video-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.video-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.video-list::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 2px;
+}
+
+.video-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+/* Firefox scrollbar */
+.video-list {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+}
+
+.video-list li {
+  background-color: #ffffff;
+  border: 1px solid var(--control-border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background-color var(--transition-duration);
+}
+
+.video-list li:hover {
+  background-color: var(--control-hover);
+}
+
+.video-list li .name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.video-list li .meta {
+  font-size: 12px;
+  color: var(--secondary-text-color);
+  margin-left: 8px;
+}
+
+/* --- Unified Panel Additions --- */
+/* Container that centers the 16:9 panel vertically when idle */
+.panel-container {
+  flex: 1;
+  display: flex;
+  align-items: center;   /* vertical centering */
+  justify-content: center; /* horizontal centering */
+}
+
+/* When a video is active, pin the panel to the top */
+#player-section.video-active .panel-container {
+  align-items: flex-start;
+}
+
+/* Unified 16:9 aspect panel */
+.aspect-16x9 {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9; /* гарантирует высоту = 9/16 от ширины */
+  border-radius: var(--border-radius);
+  overflow: hidden;
+  background-color: var(--panel-background);
+  border: 2px dashed var(--panel-border);
+}
+
+/* Layers inside the panel */
+.drop-layer,
+.video-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Drop/list appearance */
+.drop-layer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background-color: var(--panel-background);
+}
+
+.drop-layer.active {
+  outline: 3px solid var(--highlight-border);
+  background-color: #fff4d0;
+}
+
+/* Video fills the layer */
+.video-layer video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: #000;
+  object-fit: contain;
+}
+
+/* Close button in the video layer */
+.close-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--control-border);
+  border-radius: 999px;
+  width: 32px;
+  height: 32px;
+  line-height: 30px;
+  text-align: center;
+  font-size: 18px;
+  cursor: pointer;
+  opacity: 0.15;
+  transition: opacity var(--transition-duration);
+}
+
+.video-layer:hover .close-button { opacity: 1; }
+
+/* Компактный список видео */
+.video-list {
+  list-style: none;
+  padding: 8px 0 0 0;
+  margin: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center; /* центрируем элементы */
+  gap: 8px;
+}
+
+.video-list li {
+  background-color: #ffffff;
+  border: 1px solid var(--control-border);
+  border-radius: 4px;
+  padding: 6px 8px; /* компактно */
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: background-color var(--transition-duration), box-shadow var(--transition-duration);
+  font-size: 13px; /* компактный шрифт */
+  line-height: 1.3;
+  width: 80%; /* ширина ~30% панели */
+  min-width: 220px; /* чтобы на узких экранах не было слишком мало */
+  max-width: 520px;
+}
+
+.video-list li:hover {
+  background-color: var(--control-hover);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.video-list li .name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.delete-video {
+  margin-left: 8px;
+  border: 1px solid var(--control-border);
+  background: #fff;
+  color: #333;
+  border-radius: 999px;
+  width: 22px;
+  height: 22px;
+  line-height: 20px;
+  text-align: center;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.delete-video:hover {
+  background: var(--control-hover);
+}
+
+/* Панель субтитров */
+#subtitle-panel {
+  margin-top: 8px;
+  background: #fff;
+  border: 1px solid var(--control-border);
+  border-radius: var(--border-radius);
+  overflow: auto;
+  padding: 8px;
+  flex: 1;
+}
+
+#subtitle-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+#subtitle-list li {
+  padding: 4px 6px;
+  border-radius: 4px;
+  margin-bottom: 4px;
+  cursor: pointer;
+}
+
+#subtitle-list li.active {
+  background: #fff4d0;
+}
+
+/* Chat typing loader */
+.typing-loader { display: inline-flex; gap: 4px; align-items: center; }
+.typing-loader span { width: 6px; height: 6px; background: #bdbdbd; display: inline-block; border-radius: 50%; animation: typing-bounce 1.2s infinite ease-in-out; }
+.typing-loader span:nth-child(2){ animation-delay: .15s; }
+.typing-loader span:nth-child(3){ animation-delay: .30s; }
+@keyframes typing-bounce { 0%,80%,100% { transform: translateY(0); opacity: .4; } 40% { transform: translateY(-4px); opacity: 1; } }
+
+/* Elegant pulse marker for frame response */
+.pulse-marker { position: absolute; z-index: 4; width: 80px; height: 80px; border: 3px solid #2ecc71; border-radius: 50%; box-sizing: border-box; pointer-events: none; transform: translate(-50%, -50%) scale(0.6); opacity: 1; animation: pulse-out 7.2s ease-out forwards; box-shadow: 0 0 0 0 rgba(46,204,113,0.5); }
+@keyframes pulse-out { 0% { transform: translate(-50%, -50%) scale(0.6); opacity: 1; box-shadow: 0 0 0 0 rgba(46,204,113,0.5);} 60% { box-shadow: 0 0 0 56px rgba(46,204,113,0.0);} 100% { transform: translate(-50%, -50%) scale(1.8); opacity: 0; } }
+/* Disabled state for inputs while waiting */
+.chat-input:disabled, .chat-send:disabled { opacity: .6; cursor: not-allowed; }
+.explain-btn:disabled { opacity: .6; cursor: not-allowed; }
+
+
+
+
+.md-h1, .md-h2, .md-h3 {  font-weight: 600; font-size: 1.12em; margin: 6px 0 4px;  }
+
+/* Chat suggestions */
+.chat-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  min-height: 28px; /* reserve a bit of space to avoid layout jumps */
+}
+
+.suggestion-btn {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--control-border);
+  background: #fff;
+  color: #333;
+  font-size: 12px;
+  cursor: pointer;
+  transition: opacity 180ms ease, transform 180ms ease, background-color var(--transition-duration);
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.suggestion-btn:hover { background: var(--control-hover); }
+.suggestion-btn.visible { opacity: 1; transform: translateY(0); }
+.suggestion-btn.hiding { opacity: 0; transform: translateY(6px); }
+
+/* ========================================
+   MOBILE & TABLET RESPONSIVE STYLES
+   ======================================== */
+
+/* Disable mobile styles on main page (video list) */
+body.main-page .page-container {
+  flex-direction: row !important;
+  height: 100vh !important;
+}
+
+body.main-page .player-section {
+  flex: 1 !important;
+  width: auto !important;
+}
+
+/* For screens smaller than 1250px (tablets and mobile) */
+/* Only apply to video pages, not main page */
+@media (max-width: 1250px) {
+  body:not(.main-page) {
+    overflow: auto; /* Allow scrolling on mobile */
+  }
+
+  body:not(.main-page) .page-container {
+    flex-direction: column; /* Stack vertically */
+    height: auto;
+    min-height: 100vh;
+  }
+
+  /* Player section takes full width */
+  body:not(.main-page) .player-section {
+    flex: none;
+    width: 100%;
+    padding: 8px;
+  }
+
+  /* Sidebar takes full width and comes below */
+  body:not(.main-page) .sidebar {
+    flex: none;
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid var(--sidebar-border);
+    padding: 8px;
+  }
+
+  /* Hide subtitle panel on mobile */
+  #subtitle-panel {
+    display: none !important;
+  }
+
+  /* Show "О лекции" tab on mobile - user wants it back */
+  /* Removed the hide rule */
+
+  /* Adjust chat container for mobile */
+  body:not(.main-page) .chat-container {
+    min-height: 300px;
+  }
+
+  body:not(.main-page) .chat-messages {
+    min-height: 200px;
+  }
+
+  /* Style send button as circle with arrow */
+  body:not(.main-page) .chat-send {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 50%;
+    background: rgb(33, 150, 243);
+    color: white;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+    position: relative;
+  }
+
+  body:not(.main-page) .chat-send:hover {
+    background: rgb(25, 118, 210);
+  }
+
+  /* Hide text on mobile */
+  body:not(.main-page) .chat-send-text {
+    display: none;
+  }
+
+  /* Show triangle icon */
+  body:not(.main-page) .chat-send::before {
+    content: "";
+    width: 0;
+    height: 0;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-bottom: 10px solid white;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+  }
+
+  /* Make chat input larger on mobile */
+  body:not(.main-page) .chat-input {
+    font-size: 16px; /* Prevents zoom on iOS */
+    padding: 12px;
+    min-height: 48px; /* Double the height */
+  }
+
+  /* Adjust tabs for mobile */
+  body:not(.main-page) .tabs {
+    gap: 4px;
+  }
+
+  body:not(.main-page) .tab-btn {
+    flex: 1;
+    padding: 8px 6px;
+    font-size: 14px;
+  }
+
+  /* Remove flex: 1 from panel-container on mobile to avoid empty space */
+  /* Applied to all pages because iframe loads main page without single_name */
+  .panel-container {
+    flex: none;
+  }
+
+  /* Adjust controls for mobile - keep in one line */
+  body:not(.main-page) .controls {
+    flex-wrap: nowrap;
+    gap: 4px;
+    padding: 6px 8px;
+    margin-top: 4px;
+    overflow-x: auto;
+  }
+
+  body:not(.main-page) .control-button {
+    font-size: 14px;
+    padding: 8px 12px;
+    flex-shrink: 0;
+  }
+
+  body:not(.main-page) .progress-bar {
+    flex: 1;
+    min-width: 80px;
+  }
+
+  body:not(.main-page) .time-display {
+    font-size: 12px;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  body:not(.main-page) .control-label {
+    font-size: 12px;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  /* Adjust video list for mobile */
+  .video-list {
+    padding: 8px;
+  }
+
+  .video-item {
+    padding: 10px;
+    font-size: 14px;
+  }
+
+  /* Adjust upload instructions */
+  .upload-instructions {
+    font-size: 14px;
+    padding: 16px;
+  }
+
+  /* Make suggestion buttons stack better on mobile */
+  .suggestions-container {
+    gap: 6px;
+  }
+
+  .suggestion-btn {
+    font-size: 11px;
+    padding: 5px 8px;
+  }
+
+  /* Adjust message styling for mobile */
+  .msg {
+    font-size: 13px;
+  }
+
+  .msg-student {
+    max-width: 90%;
+    padding: 8px;
+  }
+
+  .msg-lecturer {
+    width: 95%;
+    margin-left: 2.5%;
+    margin-right: 2.5%;
+  }
+}
+
+/* For very small screens (phones in portrait) */
+/* Only apply to video pages, not main page */
+@media (max-width: 600px) {
+  body:not(.main-page) .player-section {
+    padding: 4px;
+  }
+
+  body:not(.main-page) .sidebar {
+    padding: 6px;
+  }
+
+  body:not(.main-page) .controls {
+    padding: 4px 6px;
+    gap: 3px;
+    margin-top: 2px;
+  }
+
+  body:not(.main-page) .control-button {
+    font-size: 12px;
+    padding: 6px 8px;
+  }
+
+  body:not(.main-page) .tab-btn {
+    padding: 6px 4px;
+    font-size: 12px;
+  }
+
+  body:not(.main-page) .chat-input {
+    padding: 10px;
+    font-size: 16px;
+  }
+
+  body:not(.main-page) .chat-send {
+    width: 34px;
+    height: 34px;
+  }
+
+  body:not(.main-page) .chat-send::before {
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-bottom: 8px solid white;
+  }
+
+  .suggestion-btn {
+    font-size: 10px;
+    padding: 4px 6px;
+  }
+}
