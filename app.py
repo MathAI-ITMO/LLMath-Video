@@ -24,12 +24,6 @@ def create_app():
         static_folder='static',
         template_folder='templates'
     )
-    # Ensure JSON responses keep Unicode (Cyrillic) intact
-    app.config['JSON_AS_ASCII'] = False
-    
-    # Enable CORS for frontend integration
-    CORS(app, resources={r"/*": {"origins": ["http://localhost:8080", "http://127.0.0.1:8080"]}})
-
     # Directories
     base_dir = os.path.abspath(os.path.dirname(__file__))
     video_dir = os.path.join(base_dir, 'data', 'video')
@@ -47,7 +41,7 @@ def create_app():
     os.makedirs(frames_dir, exist_ok=True)
     os.makedirs(suggestions_dir, exist_ok=True)
 
-    # Load config
+    # Load config (должен быть загружен до использования)
     config_path = os.path.join(base_dir, 'config.json')
     default_config = {
         "subtitles_panel_enabled": True,
@@ -57,13 +51,33 @@ def create_app():
         "transcription_mode": "openai",
         "openai_stt_model": "gpt-4o-transcribe",
         "whisper_model": "tiny",
-        "whisper_language": "ru"
+        "whisper_language": "ru",
+        "server": {
+            "host": "0.0.0.0",
+            "port": 5001
+        },
+        "cors": {
+            "origins": ["http://localhost:8080", "http://127.0.0.1:8080"]
+        }
     }
     if not os.path.exists(config_path):
         with open(config_path, 'w', encoding='utf-8') as f:
             json.dump(default_config, f, ensure_ascii=False, indent=2)
     with open(config_path, 'r', encoding='utf-8') as f:
         config = json.load(f)
+    
+    # Ensure JSON responses keep Unicode (Cyrillic) intact
+    app.config['JSON_AS_ASCII'] = False
+    
+    # Enable CORS for frontend integration
+    # CORS origins можно задать через переменную окружения VIDEOAPP_CORS_ORIGINS (через запятую)
+    # или через config.json
+    cors_origins_env = os.environ.get('VIDEOAPP_CORS_ORIGINS')
+    if cors_origins_env:
+        cors_origins = [origin.strip() for origin in cors_origins_env.split(',')]
+    else:
+        cors_origins = config.get('cors', {}).get('origins', ['http://localhost:8080', 'http://127.0.0.1:8080'])
+    CORS(app, resources={r"/*": {"origins": cors_origins}})
 
     # Allowed video extensions for upload
     ALLOWED_EXTENSIONS = {'.mp4', '.webm', '.ogg', '.mkv', '.mov'}
@@ -946,7 +960,15 @@ def create_app():
 if __name__ == '__main__':
     application = create_app()
     # The host and port can be customised via environment variables; fall back to
-    # defaults if not provided.
-    host = os.environ.get('FLASK_RUN_HOST', '0.0.0.0')
-    port = int(os.environ.get('FLASK_RUN_PORT', 5000))
+    # config.json or defaults if not provided.
+    # Загружаем config для чтения настроек сервера
+    base_dir = os.path.abspath(os.path.dirname(__file__))
+    config_path = os.path.join(base_dir, 'config.json')
+    server_config = {}
+    if os.path.exists(config_path):
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config_data = json.load(f)
+            server_config = config_data.get('server', {})
+    host = os.environ.get('FLASK_RUN_HOST', server_config.get('host', '0.0.0.0'))
+    port = int(os.environ.get('FLASK_RUN_PORT', server_config.get('port', 5001)))
     application.run(host=host, port=port, debug=True)
