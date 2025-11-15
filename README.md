@@ -85,6 +85,18 @@ webapp/
    - Перетащите видео на жёлтую панель под плеером или выберите из списка.
    - Файл окажется в `webapp/data/video/` и сразу откроется в окне плеера.
 
+## 3.1) Настройка переменных окружения
+- Секреты и параметры LLM больше не хранятся в `config.json`. Создайте файл `.env` в корне проекта (рядом с `app.py`) и добавьте переменные:
+  - `VIDEOAPP_OPENAI_API_KEY`
+  - `VIDEOAPP_OPENAI_API_BASE` (по умолчанию `https://api.openai.com/v1`)
+  - `VIDEOAPP_OPENAI_MODEL`
+  - `VIDEOAPP_TRANSCRIPTION_MODE` (`openai` или `local`)
+  - `VIDEOAPP_OPENAI_STT_MODEL`
+  - `VIDEOAPP_WHISPER_MODEL`
+  - `VIDEOAPP_WHISPER_LANGUAGE`
+  - `VIDEOAPP_CORS_ORIGINS` — список источников через запятую (например `http://localhost:8080,http://127.0.0.1:8080`)
+- Любая настройка из списка `VIDEOAPP_*` берётся сначала из переменных окружения / `.env`, затем из `config.json`, и только потом проваливается к значениям по умолчанию в коде.
+
 ### Заметки
 - Поддерживаются стандартные контейнеры браузерного `<video>` (mp4/webm и т.д. — зависит от кодеков браузера).
 - Папку `webapp/data/video/` при первом запуске создавать не требуется — она уже есть.

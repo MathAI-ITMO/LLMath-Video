@@ -7,6 +7,7 @@ import subprocess
 import json
 import base64
 from datetime import datetime
+from dotenv import load_dotenv
 
 
 def create_app():
@@ -26,6 +27,7 @@ def create_app():
     )
     # Directories
     base_dir = os.path.abspath(os.path.dirname(__file__))
+    load_dotenv(os.path.join(base_dir, '.env'))
     video_dir = os.path.join(base_dir, 'data', 'video')
     audio_dir = os.path.join(base_dir, 'data', 'audio')
     subs_dir = os.path.join(base_dir, 'data', 'subtitles')
@@ -45,13 +47,6 @@ def create_app():
     config_path = os.path.join(base_dir, 'config.json')
     default_config = {
         "subtitles_panel_enabled": True,
-        "openai_api_key": "",
-        "openai_api_base": "https://api.openai.com/v1",
-        "openai_model": "gpt-5-nano",
-        "transcription_mode": "openai",
-        "openai_stt_model": "gpt-4o-transcribe",
-        "whisper_model": "tiny",
-        "whisper_language": "ru",
         "server": {
             "host": "0.0.0.0",
             "port": 5001
@@ -65,6 +60,24 @@ def create_app():
             json.dump(default_config, f, ensure_ascii=False, indent=2)
     with open(config_path, 'r', encoding='utf-8') as f:
         config = json.load(f)
+
+    # Sensitive / runtime-tunable settings come from environment variables first
+    llm_defaults = {
+        "openai_api_key": "",
+        "openai_api_base": "https://api.openai.com/v1",
+        "openai_model": "gpt-5-nano",
+        "transcription_mode": "openai",
+        "openai_stt_model": "whisper-1",
+        "whisper_model": "tiny",
+        "whisper_language": "ru"
+    }
+    llm_config = {}
+    for key, default in llm_defaults.items():
+        env_key = f"VIDEOAPP_{key.upper()}"
+        value = os.environ.get(env_key)
+        if value is None:
+            value = config.get(key, default)
+        llm_config[key] = value
     
     # Ensure JSON responses keep Unicode (Cyrillic) intact
     app.config['JSON_AS_ASCII'] = False
@@ -187,7 +200,7 @@ def create_app():
                 # Summary
                 try:
                     if full_text and not os.path.isfile(summary_path):
-                        append_log(name, {"type": "summary_request", "time": datetime.now().isoformat(timespec='seconds'), "model": config.get('openai_model'), "content": (config.get('prompts', {}) or {}).get('summary') or ''})
+                        append_log(name, {"type": "summary_request", "time": datetime.now().isoformat(timespec='seconds'), "model": llm_config.get('openai_model') or 'gpt-5-nano', "content": (config.get('prompts', {}) or {}).get('summary') or ''})
                         summary_text = summarize_with_llm(full_text, name)
                         if summary_text:
                             os.makedirs(summary_dir, exist_ok=True)
@@ -361,8 +374,8 @@ def create_app():
     def transcribe_with_whisper(audio_path: str):
         """Transcribe audio to segments using OpenAI Whisper."""
         import whisper
-        w_model = str(config.get('whisper_model', 'tiny'))
-        language = str(config.get('whisper_language', 'ru'))
+        w_model = str(llm_config.get('whisper_model', 'tiny'))
+        language = str(llm_config.get('whisper_language', 'ru'))
         model = whisper.load_model(w_model)
         result = model.transcribe(audio_path, language=language, fp16=False, verbose=False)
         segments = []
@@ -382,12 +395,12 @@ def create_app():
         - If only plain text is returned, split into sentence-like chunks
           and distribute over the full audio duration (approximation).
         """
-        api_key = config.get('openai_api_key')
+        api_key = llm_config.get('openai_api_key')
         if not api_key:
             return []
         from openai import OpenAI
-        client = OpenAI(api_key=api_key, base_url=config.get('openai_api_base', 'https://api.openai.com/v1'))
-        stt_model = str(config.get('openai_stt_model', 'whisper-1'))
+        client = OpenAI(api_key=api_key, base_url=llm_config.get('openai_api_base', 'https://api.openai.com/v1'))
+        stt_model = str(llm_config.get('openai_stt_model', 'whisper-1'))
 
         # Helper: audio duration via ffmpeg
         def probe_duration() -> float:
@@ -438,7 +451,7 @@ def create_app():
                         model=stt_model,
                         file=f,
                         response_format='verbose_json',
-                        language=str(config.get('whisper_language', 'ru')),
+                        language=str(llm_config.get('whisper_language', 'ru')),
                         timestamp_granularities=['segment']
                     )
                     segments = []
@@ -487,7 +500,7 @@ def create_app():
             return []
 
     def transcribe_audio(audio_path: str):
-        mode = str(config.get('transcription_mode', 'openai')).lower()
+        mode = str(llm_config.get('transcription_mode', 'openai')).lower()
         if mode == 'local':
             return transcribe_with_whisper(audio_path)
         return transcribe_with_openai(audio_path)
@@ -495,7 +508,7 @@ def create_app():
     # --- OpenAI helpers with fallback between Responses API and Chat Completions ---
     def get_openai_client():
         from openai import OpenAI
-        return OpenAI(api_key=config.get('openai_api_key'), base_url=config.get('openai_api_base', 'https://api.openai.com/v1'))
+        return OpenAI(api_key=llm_config.get('openai_api_key'), base_url=llm_config.get('openai_api_base', 'https://api.openai.com/v1'))
 
     def call_openai_text(client, model: str, input_text: str) -> str:
         """Try Responses API, fallback to Chat Completions for text-only prompts."""
@@ -526,7 +539,7 @@ def create_app():
         name = data.get('name') or ''
         image_data_url = data.get('image') or ''
         current_time = float(data.get('currentTime') or 0)
-        api_key = config.get('openai_api_key')
+        api_key = llm_config.get('openai_api_key')
         if not api_key:
             return jsonify({'answer': 'LLM РЅРµ РЅР°СЃС‚СЂРѕРµРЅ'}), 200
 
@@ -573,7 +586,7 @@ def create_app():
 
         # Call Responses API with multimodal input (text + image data URL)
         client = get_openai_client()
-        model = config.get('openai_model', 'gpt-4o-mini')
+        model = llm_config.get('openai_model') or 'gpt-4o-mini'
 
         # Log request
         now_req = datetime.now().isoformat(timespec='seconds')
@@ -707,12 +720,12 @@ def create_app():
             pass
 
     def summarize_with_llm(text: str, filename: str) -> str:
-        api_key = config.get('openai_api_key')
+        api_key = llm_config.get('openai_api_key')
         if not api_key:
             return ""
         try:
             client = get_openai_client()
-            model = config.get('openai_model', 'gpt-5-nano')
+            model = llm_config.get('openai_model') or 'gpt-5-nano'
             prompt_tpl = (config.get('prompts', {}) or {}).get('summary') or (
                 "РўС‹ РѕРїС‹С‚РЅС‹Р№ Р»РµРєС‚РѕСЂ. РЎС„РѕСЂРјРёСЂСѓР№ РєСЂР°С‚РєРѕРµ РѕРїРёСЃР°РЅРёРµ Р»РµРєС†РёРё Рё РїРµСЂРµС‡РёСЃР»Рё РѕСЃРЅРѕРІРЅС‹Рµ РІРѕРїСЂРѕСЃС‹, РєРѕС‚РѕСЂС‹Рµ Р±С‹Р»Рё СЂР°Р·РѕР±СЂР°РЅС‹. РћС‚РІРµС‚ РЅР° СЂСѓСЃСЃРєРѕРј СЏР·С‹РєРµ. РўРµРєСЃС‚ Р»РµРєС†РёРё РЅРёР¶Рµ:\n\n{transcript}"
             )
@@ -741,7 +754,7 @@ def create_app():
 
     def generate_suggestions_with_llm(timecoded_transcript: str, filename: str, subs_count: int = 0):
         """Ask LLM to produce short time-ranged questions; returns list of items."""
-        api_key = config.get('openai_api_key')
+        api_key = llm_config.get('openai_api_key')
         if not api_key:
             return []
         try:
@@ -795,8 +808,8 @@ def create_app():
             )
 
             from openai import OpenAI
-            client = OpenAI(api_key=api_key, base_url=config.get('openai_api_base', 'https://api.openai.com/v1'))
-            model = config.get('openai_model', 'gpt-5-nano')
+            client = OpenAI(api_key=api_key, base_url=llm_config.get('openai_api_base', 'https://api.openai.com/v1'))
+            model = llm_config.get('openai_model') or 'gpt-5-nano'
 
             now_req = datetime.now().isoformat(timespec='seconds')
             append_log(filename, {"type": "suggestions_request", "time": now_req, "model": model, "content": user_prompt})
@@ -859,7 +872,7 @@ def create_app():
         current_time = float(data.get('currentTime') or 0)
         dialog = data.get('dialog') or []
         question = data.get('question') or ''
-        api_key = config.get('openai_api_key')
+        api_key = llm_config.get('openai_api_key')
         if not api_key:
             return jsonify({"answer": "LLM РЅРµ РЅР°СЃС‚СЂРѕРµРЅ"}), 200
 
@@ -911,8 +924,8 @@ def create_app():
 
         try:
             from openai import OpenAI
-            client = OpenAI(api_key=api_key, base_url=config.get('openai_api_base', 'https://api.openai.com/v1'))
-            model = config.get('openai_model', 'gpt-5-nano')
+            client = OpenAI(api_key=api_key, base_url=llm_config.get('openai_api_base', 'https://api.openai.com/v1'))
+            model = llm_config.get('openai_model') or 'gpt-5-nano'
             system = (config.get('prompts', {}) or {}).get('chat_system') or "РўС‹ РІС‹СЃС‚СѓРїР°РµС€СЊ РІ СЂРѕР»Рё Р»РµРєС‚РѕСЂР°, РѕС‚РІРµС‡Р°Р№ С‡РµС‚РєРѕ Рё РїРѕ РґРµР»Сѓ."
             prompt = f"{system}\n\n{user_prompt}"
             # Р‘РµР· temperature (РјРѕРіСѓС‚ Р±С‹С‚СЊ РјРѕРґРµР»Рё, РЅРµ РїРѕРґРґРµСЂР¶РёРІР°СЋС‰РёРµ РїР°СЂР°РјРµС‚СЂ)

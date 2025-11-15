@@ -16,11 +16,13 @@ Installed packages
 - Python (venv): Flask, openai, openai-whisper (local mode), torch (CPU), numba, ffmpeg-python, gunicorn
 
 App configuration
-- config.json additions:
-  - "transcription_mode": "openai" | "local"
-  - "openai_stt_model": "gpt-4o-transcribe" (default) or "whisper-1"
-  - "whisper_model": "tiny" (default)
-  - "whisper_language": "ru" (default)
+- config.json хранит только несекретные параметры (UI, сервер, подсказки).
+- Значения `VIDEOAPP_*` задаются через `.env`:
+  - `VIDEOAPP_OPENAI_API_KEY`
+  - `VIDEOAPP_OPENAI_API_BASE`, `VIDEOAPP_OPENAI_MODEL`
+  - `VIDEOAPP_TRANSCRIPTION_MODE`, `VIDEOAPP_OPENAI_STT_MODEL`
+  - `VIDEOAPP_WHISPER_MODEL`, `VIDEOAPP_WHISPER_LANGUAGE`
+- Переменные окружения перекрывают значения из config.json и дефолтов приложения.
 
 Networking / firewall
 - UFW: allow OpenSSH, Nginx Full (80/443); deny others by default
