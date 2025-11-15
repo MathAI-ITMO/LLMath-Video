@@ -30,8 +30,7 @@ Deploy update (manual quick steps)
 3) systemctl restart ai_videoapp
 
 Config toggles
-- config.json -> "transcription_mode": "openai" (remote) or "local" (on-server Whisper)
-- "openai_stt_model": "gpt-4o-transcribe" or "whisper-1"
+- "openai_stt_model": "gpt-4o-transcribe" or "whisper-1" (все транскрипции выполняются удалённо)
 
 Backup
 - App code: /opt/ai_videoapp

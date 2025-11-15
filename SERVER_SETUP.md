@@ -13,15 +13,15 @@ Summary
 
 Installed packages
 - System: python3, python3-venv, python3-pip, ffmpeg, nginx, certbot, python3-certbot-nginx, build-essential
-- Python (venv): Flask, openai, openai-whisper (local mode), torch (CPU), numba, ffmpeg-python, gunicorn
+- Python (venv): Flask, openai, ffmpeg-python, gunicorn
 
 App configuration
 - config.json хранит только несекретные параметры (UI, сервер, подсказки).
 - Значения `VIDEOAPP_*` задаются через `.env`:
   - `VIDEOAPP_OPENAI_API_KEY`
   - `VIDEOAPP_OPENAI_API_BASE`, `VIDEOAPP_OPENAI_MODEL`
-  - `VIDEOAPP_TRANSCRIPTION_MODE`, `VIDEOAPP_OPENAI_STT_MODEL`
-  - `VIDEOAPP_WHISPER_MODEL`, `VIDEOAPP_WHISPER_LANGUAGE`
+  - `VIDEOAPP_OPENAI_STT_API_BASE`, `VIDEOAPP_OPENAI_STT_API_KEY`, `VIDEOAPP_OPENAI_STT_MODEL`
+  - `VIDEOAPP_WHISPER_LANGUAGE`
 - Переменные окружения перекрывают значения из config.json и дефолтов приложения.
 
 Networking / firewall
@@ -29,5 +29,5 @@ Networking / firewall
 
 Notes
 - ffmpeg is used for audio extraction to 16kHz mono MP3 to keep STT payloads small.
-- Local Whisper requires more CPU/RAM; remote STT is recommended in production.
+- Все распознавание речи выполняется удалённо через OpenAI, поэтому локальные модели Whisper не устанавливаются.
 

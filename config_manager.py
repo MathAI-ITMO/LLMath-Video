@@ -18,11 +18,11 @@ DEFAULT_CONFIG = {
 LLM_DEFAULTS = {
     "openai_api_key": "",
     "openai_api_base": "https://api.openai.com/v1",
+    "openai_stt_api_base": "https://api.openai.com/v1",
+    "openai_stt_api_key": "",
     "openai_model": "gpt-5-nano",
-    "transcription_mode": "openai",
     "openai_stt_model": "whisper-1",
-    "whisper_model": "tiny",
-    "whisper_language": "ru"
+    "whisper_language": "ru",
 }
 
 DATA_SUBDIRS = {
