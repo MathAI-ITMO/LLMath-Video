@@ -7,7 +7,16 @@ import subprocess
 import json
 import base64
 from datetime import datetime
-from dotenv import load_dotenv
+
+from config_manager import (
+    build_llm_config,
+    ensure_data_directories,
+    get_llm_setting,
+    get_prompt_template,
+    is_cors_disabled,
+    load_config,
+    resolve_cors_origins,
+)
 
 
 def create_app():
@@ -25,72 +34,29 @@ def create_app():
         static_folder='static',
         template_folder='templates'
     )
-    # Directories
     base_dir = os.path.abspath(os.path.dirname(__file__))
-    load_dotenv(os.path.join(base_dir, '.env'))
-    video_dir = os.path.join(base_dir, 'data', 'video')
-    audio_dir = os.path.join(base_dir, 'data', 'audio')
-    subs_dir = os.path.join(base_dir, 'data', 'subtitles')
-    frames_dir = os.path.join(base_dir, 'data', 'frames')
-    summary_dir = os.path.join(base_dir, 'data', 'summaries')
-    logs_dir = os.path.join(base_dir, 'data', 'logs')
-    suggestions_dir = os.path.join(base_dir, 'data', 'suggestions')
-    os.makedirs(video_dir, exist_ok=True)
-    os.makedirs(audio_dir, exist_ok=True)
-    os.makedirs(subs_dir, exist_ok=True)
-    os.makedirs(summary_dir, exist_ok=True)
-    os.makedirs(logs_dir, exist_ok=True)
-    os.makedirs(frames_dir, exist_ok=True)
-    os.makedirs(suggestions_dir, exist_ok=True)
-
-    # Load config (должен быть загружен до использования)
-    config_path = os.path.join(base_dir, 'config.json')
-    default_config = {
-        "subtitles_panel_enabled": True,
-        "server": {
-            "host": "0.0.0.0",
-            "port": 5001
-        },
-        "cors": {
-            "origins": ["http://localhost:8080", "http://127.0.0.1:8080"]
-        }
-    }
-    if not os.path.exists(config_path):
-        with open(config_path, 'w', encoding='utf-8') as f:
-            json.dump(default_config, f, ensure_ascii=False, indent=2)
-    with open(config_path, 'r', encoding='utf-8') as f:
-        config = json.load(f)
+    config = load_config(base_dir)
+    dirs = ensure_data_directories(base_dir)
+    video_dir = dirs['video']
+    audio_dir = dirs['audio']
+    subs_dir = dirs['subtitles']
+    frames_dir = dirs['frames']
+    summary_dir = dirs['summaries']
+    logs_dir = dirs['logs']
+    suggestions_dir = dirs['suggestions']
 
     # Sensitive / runtime-tunable settings come from environment variables first
-    llm_defaults = {
-        "openai_api_key": "",
-        "openai_api_base": "https://api.openai.com/v1",
-        "openai_model": "gpt-5-nano",
-        "transcription_mode": "openai",
-        "openai_stt_model": "whisper-1",
-        "whisper_model": "tiny",
-        "whisper_language": "ru"
-    }
-    llm_config = {}
-    for key, default in llm_defaults.items():
-        env_key = f"VIDEOAPP_{key.upper()}"
-        value = os.environ.get(env_key)
-        if value is None:
-            value = config.get(key, default)
-        llm_config[key] = value
+    llm_config = build_llm_config(config)
     
     # Ensure JSON responses keep Unicode (Cyrillic) intact
     app.config['JSON_AS_ASCII'] = False
     
-    # Enable CORS for frontend integration
+    # Enable CORS for frontend integration unless explicitly disabled
     # CORS origins можно задать через переменную окружения VIDEOAPP_CORS_ORIGINS (через запятую)
     # или через config.json
-    cors_origins_env = os.environ.get('VIDEOAPP_CORS_ORIGINS')
-    if cors_origins_env:
-        cors_origins = [origin.strip() for origin in cors_origins_env.split(',')]
-    else:
-        cors_origins = config.get('cors', {}).get('origins', ['http://localhost:8080', 'http://127.0.0.1:8080'])
-    CORS(app, resources={r"/*": {"origins": cors_origins}})
+    if not is_cors_disabled():
+        cors_origins = resolve_cors_origins(config)
+        CORS(app, resources={r"/*": {"origins": cors_origins}})
 
     # Allowed video extensions for upload
     ALLOWED_EXTENSIONS = {'.mp4', '.webm', '.ogg', '.mkv', '.mov'}
@@ -200,7 +166,7 @@ def create_app():
                 # Summary
                 try:
                     if full_text and not os.path.isfile(summary_path):
-                        append_log(name, {"type": "summary_request", "time": datetime.now().isoformat(timespec='seconds'), "model": llm_config.get('openai_model') or 'gpt-5-nano', "content": (config.get('prompts', {}) or {}).get('summary') or ''})
+                        append_log(name, {"type": "summary_request", "time": datetime.now().isoformat(timespec='seconds'), "model": get_llm_setting(llm_config, 'openai_model'), "content": get_prompt_template(config, 'summary')})
                         summary_text = summarize_with_llm(full_text, name)
                         if summary_text:
                             os.makedirs(summary_dir, exist_ok=True)
@@ -280,11 +246,11 @@ def create_app():
         original_name = file.filename or ''
         filename = os.path.basename(original_name)
         if not filename:
-            return jsonify({'error': 'РќРµРєРѕСЂСЂРµРєС‚РЅРѕРµ РёРјСЏ С„Р°Р№Р»Р°'}), 400
+            return jsonify({'error': 'Некорректное имя файла'}), 400
         # Split extension and validate
         base, ext = os.path.splitext(filename)
         if not allowed_file(filename):
-            return jsonify({'error': 'РќРµРїРѕРґРґРµСЂР¶РёРІР°РµРјС‹Р№ С‚РёРї С„Р°Р№Р»Р°'}), 400
+            return jsonify({'error': 'Неподдерживаемый тип файла'}), 400
         # Filter out characters not suitable for filenames on common OS
         allowed_chars = " ._()-"
         safe_base = ''.join(ch for ch in base if ch.isalnum() or ch in allowed_chars)
@@ -374,8 +340,8 @@ def create_app():
     def transcribe_with_whisper(audio_path: str):
         """Transcribe audio to segments using OpenAI Whisper."""
         import whisper
-        w_model = str(llm_config.get('whisper_model', 'tiny'))
-        language = str(llm_config.get('whisper_language', 'ru'))
+        w_model = get_llm_setting(llm_config, 'whisper_model')
+        language = get_llm_setting(llm_config, 'whisper_language')
         model = whisper.load_model(w_model)
         result = model.transcribe(audio_path, language=language, fp16=False, verbose=False)
         segments = []
@@ -399,8 +365,8 @@ def create_app():
         if not api_key:
             return []
         from openai import OpenAI
-        client = OpenAI(api_key=api_key, base_url=llm_config.get('openai_api_base', 'https://api.openai.com/v1'))
-        stt_model = str(llm_config.get('openai_stt_model', 'whisper-1'))
+        client = OpenAI(api_key=api_key, base_url=get_llm_setting(llm_config, 'openai_api_base'))
+        stt_model = get_llm_setting(llm_config, 'openai_stt_model')
 
         # Helper: audio duration via ffmpeg
         def probe_duration() -> float:
@@ -451,7 +417,7 @@ def create_app():
                         model=stt_model,
                         file=f,
                         response_format='verbose_json',
-                        language=str(llm_config.get('whisper_language', 'ru')),
+                        language=get_llm_setting(llm_config, 'whisper_language'),
                         timestamp_granularities=['segment']
                     )
                     segments = []
@@ -500,7 +466,7 @@ def create_app():
             return []
 
     def transcribe_audio(audio_path: str):
-        mode = str(llm_config.get('transcription_mode', 'openai')).lower()
+        mode = get_llm_setting(llm_config, 'transcription_mode').lower()
         if mode == 'local':
             return transcribe_with_whisper(audio_path)
         return transcribe_with_openai(audio_path)
@@ -508,7 +474,7 @@ def create_app():
     # --- OpenAI helpers with fallback between Responses API and Chat Completions ---
     def get_openai_client():
         from openai import OpenAI
-        return OpenAI(api_key=llm_config.get('openai_api_key'), base_url=llm_config.get('openai_api_base', 'https://api.openai.com/v1'))
+        return OpenAI(api_key=llm_config.get('openai_api_key'), base_url=get_llm_setting(llm_config, 'openai_api_base'))
 
     def call_openai_text(client, model: str, input_text: str) -> str:
         """Try Responses API, fallback to Chat Completions for text-only prompts."""
@@ -541,7 +507,7 @@ def create_app():
         current_time = float(data.get('currentTime') or 0)
         api_key = llm_config.get('openai_api_key')
         if not api_key:
-            return jsonify({'answer': 'LLM РЅРµ РЅР°СЃС‚СЂРѕРµРЅ'}), 200
+            return jsonify({'answer': 'LLM не настроен'}), 200
 
         # Save image to frames_dir for logs/preview
         img_rel_path = None
@@ -577,16 +543,13 @@ def create_app():
             subs_text = ''
 
         # Prompts
-        prompts = config.get('prompts', {}) or {}
-        system = prompts.get('frame_system') or 'РўС‹ РІС‹СЃС‚СѓРїР°РµС€СЊ РІ СЂРѕР»Рё Р»РµРєС‚РѕСЂР°. Р•СЃР»Рё Рє С‚РµРѕСЂРёРё РїРѕРґС…РѕРґСЏС‚ С„РѕСЂРјСѓР»С‹, РјРѕР¶РµС€СЊ РёСЃРїРѕР»СЊР·РѕРІР°С‚СЊ LaTeX.'
-        tpl = prompts.get('frame_user_template') or (
-            'Р›РµРєС†РёСЏ: {lecture}\nРљСЂР°С‚РєРѕРµ СЃРѕРґРµСЂР¶Р°РЅРёРµ: {summary}\n\nРњС‹ РЅР°С…РѕРґРёРјСЃСЏ РІ СЂР°Р·РґРµР»Рµ:\n{context}\n\nРќР° РёР·РѕР±СЂР°Р¶РµРЅРёРё РІС‹РґРµР»РµРЅ РєСЂР°СЃРЅС‹Рј РїРѕР»СѓРїСЂРѕР·СЂР°С‡РЅС‹Рј РєСЂСѓРіРѕРј РёРЅС‚РµСЂРµСЃСѓСЋС‰РёР№ С„СЂР°РіРјРµРЅС‚. Р”Р°Р№ РїРѕСЏСЃРЅРµРЅРёРµ РїРѕ СЌС‚РѕРјСѓ С„СЂР°РіРјРµРЅС‚Сѓ.'
-        )
+        system = get_prompt_template(config, 'frame_system')
+        tpl = get_prompt_template(config, 'frame_user_template')
         user_prompt = tpl.format(lecture=name, summary=summary_text, context=subs_text)
 
         # Call Responses API with multimodal input (text + image data URL)
         client = get_openai_client()
-        model = llm_config.get('openai_model') or 'gpt-4o-mini'
+        model = get_llm_setting(llm_config, 'openai_model')
 
         # Log request
         now_req = datetime.now().isoformat(timespec='seconds')
@@ -640,9 +603,9 @@ def create_app():
             append_log(name, {"type": "frame_response", "time": now, "content": answer, "image_url": img_url_for_log})
             return jsonify({'answer': answer, 'image_url': img_url_for_log})
         else:
-            err_text = str(last_err) if last_err else 'РќРµРёР·РІРµСЃС‚РЅР°СЏ РѕС€РёР±РєР° LLM'
+            err_text = str(last_err) if last_err else 'Неизвестная ошибка LLM'
             append_log(name, {"type": "error", "time": now, "content": err_text})
-            return jsonify({'answer': 'РћС€РёР±РєР° РѕР±СЂР°С‰РµРЅРёСЏ Рє LLM'}), 200
+            return jsonify({'answer': 'Ошибка обращения к LLM'}), 200
 
     def read_summary(filename: str) -> str:
         path = os.path.join(summary_dir, f"{filename}.txt")
@@ -725,13 +688,11 @@ def create_app():
             return ""
         try:
             client = get_openai_client()
-            model = llm_config.get('openai_model') or 'gpt-5-nano'
-            prompt_tpl = (config.get('prompts', {}) or {}).get('summary') or (
-                "РўС‹ РѕРїС‹С‚РЅС‹Р№ Р»РµРєС‚РѕСЂ. РЎС„РѕСЂРјРёСЂСѓР№ РєСЂР°С‚РєРѕРµ РѕРїРёСЃР°РЅРёРµ Р»РµРєС†РёРё Рё РїРµСЂРµС‡РёСЃР»Рё РѕСЃРЅРѕРІРЅС‹Рµ РІРѕРїСЂРѕСЃС‹, РєРѕС‚РѕСЂС‹Рµ Р±С‹Р»Рё СЂР°Р·РѕР±СЂР°РЅС‹. РћС‚РІРµС‚ РЅР° СЂСѓСЃСЃРєРѕРј СЏР·С‹РєРµ. РўРµРєСЃС‚ Р»РµРєС†РёРё РЅРёР¶Рµ:\n\n{transcript}"
-            )
+            model = get_llm_setting(llm_config, 'openai_model')
+            prompt_tpl = get_prompt_template(config, 'summary')
             input_text = prompt_tpl.replace('{transcript}', text)
-            # РќРµРєРѕС‚РѕСЂС‹Рµ РјРѕРґРµР»Рё РЅРµ РїРѕРґРґРµСЂР¶РёРІР°СЋС‚ temperature вЂ” РЅРµ РїРµСЂРµРґР°РµРј РµРіРѕ
-            # Р”РѕР±Р°РІРёРј РїСЂРѕСЃС‚СѓСЋ СЃС‚СЂР°С‚РµРіРёСЋ РїРѕРІС‚РѕСЂРѕРІ РїСЂРё 429
+            # Некоторые модели не поддерживают temperature — не передаем его
+            # Добавим простую стратегию повторов при 429
             return call_openai_text(client, model, input_text)
         except Exception:
             return ""
@@ -758,24 +719,7 @@ def create_app():
         if not api_key:
             return []
         try:
-            prompts = config.get('prompts', {}) or {}
-            tpl = prompts.get('suggestions') or (
-                "РўС‹ РїРѕРјРѕС‰РЅРёРє СЃС‚СѓРґРµРЅС‚Р°, РєРѕС‚РѕСЂС‹Р№ СЃРјРѕС‚СЂРёС‚ РІРёРґРµРѕ-Р»РµРєС†РёСЋ. РўРµР±Рµ РґР°РЅ РїРѕР»РЅС‹Р№ С‚СЂР°РЅСЃРєСЂРёРїС‚"
-                " СЃ РїРѕРјРµС‚РєР°РјРё РІСЂРµРјРµРЅРё РЅР°С‡Р°Р»Р° СЂРµРїР»РёРє РІ С„РѕСЂРјР°С‚Рµ [HH:mm:ss]. РќР° РѕСЃРЅРѕРІРµ СЌС‚РѕРіРѕ С‚РµРєСЃС‚Р°"
-                " СЃРѕСЃС‚Р°РІСЊ РњРќРћР“Рћ РєРѕСЂРѕС‚РєРёС…, РєРѕРЅРєСЂРµС‚РЅС‹С… Рё СѓРјРµСЃС‚РЅС‹С… РІРѕРїСЂРѕСЃРѕРІ, РєРѕС‚РѕСЂС‹Рµ СЃС‚СѓРґРµРЅС‚ РјРѕР¶РµС‚"
-                " Р·Р°РґР°С‚СЊ РїСЂРµРїРѕРґР°РІР°С‚РµР»СЋ, РєРѕРіРґР° СЃРѕРѕС‚РІРµС‚СЃС‚РІСѓРµС‚ РѕР±СЃСѓР¶РґР°РµРјРѕР№ С‚РµРјРµ.\n\n"
-                "РџСЂР°РІРёР»Р° СЃРѕСЃС‚Р°РІР»РµРЅРёСЏ РІРѕРїСЂРѕСЃРѕРІ:\n"
-                "- РљР°Р¶РґС‹Р№ РІРѕРїСЂРѕСЃ РјР°РєСЃРёРјР°Р»СЊРЅРѕ РєРѕСЂРѕС‚РєРёР№ (Р¶РµР»Р°С‚РµР»СЊРЅРѕ РґРѕ 8-12 СЃР»РѕРІ).\n"
-                "- Р’РѕРїСЂРѕСЃС‹ С„РѕСЂРјСѓР»РёСЂСѓР№ С‚Р°Рє, С‡С‚РѕР±С‹ РѕРЅРё РїРµСЂРµРєСЂС‹РІР°Р»Рё РІСЃСЋ РґР»РёС‚РµР»СЊРЅРѕСЃС‚СЊ РІРёРґРµРѕ.\n"
-                "- РЈ РєР°Р¶РґРѕРіРѕ РІРѕРїСЂРѕСЃР° РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РёРЅС‚РµСЂРІР°Р» Р°РєС‚СѓР°Р»СЊРЅРѕСЃС‚Рё (start/end РІ HH:mm:ss),"
-                "  РІ С‚РµС‡РµРЅРёРµ РєРѕС‚РѕСЂРѕРіРѕ СЌС‚РѕС‚ РІРѕРїСЂРѕСЃ СѓРјРµСЃС‚РµРЅ. РРЅС‚РµСЂРІР°Р»С‹ Р”РћР›Р–РќР« РїРµСЂРµРєСЂС‹РІР°С‚СЊСЃСЏ,"
-                "  С‡С‚РѕР±С‹ РІ Р»СЋР±РѕР№ РјРѕРјРµРЅС‚ РІСЂРµРјРµРЅРё Р±С‹Р»Рѕ РЅРµСЃРєРѕР»СЊРєРѕ СЂРµР»РµРІР°РЅС‚РЅС‹С… РІРѕРїСЂРѕСЃРѕРІ.\n"
-                "- РџСЂРёРІСЏР·С‹РІР°Р№ РІРѕРїСЂРѕСЃС‹ Рє СЃРѕРґРµСЂР¶Р°РЅРёСЋ Р»РµРєС†РёРё: С‚РµСЂРјРёРЅР°Рј, РѕРїСЂРµРґРµР»РµРЅРёСЏРј, С€Р°РіР°Рј, РїСЂРёРјРµСЂР°Рј.\n"
-                "- Р’РµСЂРЅРё РўРћР›Р¬РљРћ JSON-РјР°СЃСЃРёРІ РѕР±СЉРµРєС‚РѕРІ РІРёРґР°:\n"
-                "  [{\"text\":\"...\",\"start\":\"HH:mm:ss\",\"end\":\"HH:mm:ss\"}, ...]\n"
-                "- Р‘РµР· РґРѕРїРѕР»РЅРёС‚РµР»СЊРЅРѕРіРѕ С‚РµРєСЃС‚Р°, Р±РµР· РєРѕРјРјРµРЅС‚Р°СЂРёРµРІ Рё РїРѕСЏСЃРЅРµРЅРёР№. РўРѕР»СЊРєРѕ JSON.\n\n"
-                "РўСЂР°РЅСЃРєСЂРёРїС‚ СЃ С‚Р°Р№Рј-РєРѕРґР°РјРё:\n{timecoded_transcript}"
-            )
+            tpl = get_prompt_template(config, 'suggestions')
             # Avoid .format on JSON braces; replace known tokens manually
             def hhmmss_from_sec(sec: int) -> str:
                 try:
@@ -808,8 +752,8 @@ def create_app():
             )
 
             from openai import OpenAI
-            client = OpenAI(api_key=api_key, base_url=llm_config.get('openai_api_base', 'https://api.openai.com/v1'))
-            model = llm_config.get('openai_model') or 'gpt-5-nano'
+            client = OpenAI(api_key=api_key, base_url=get_llm_setting(llm_config, 'openai_api_base'))
+            model = get_llm_setting(llm_config, 'openai_model')
 
             now_req = datetime.now().isoformat(timespec='seconds')
             append_log(filename, {"type": "suggestions_request", "time": now_req, "model": model, "content": user_prompt})
@@ -874,7 +818,7 @@ def create_app():
         question = data.get('question') or ''
         api_key = llm_config.get('openai_api_key')
         if not api_key:
-            return jsonify({"answer": "LLM РЅРµ РЅР°СЃС‚СЂРѕРµРЅ"}), 200
+            return jsonify({"answer": "LLM не настроен"}), 200
 
         # Prepare context
         subs_json_path = os.path.join(subs_dir, f"{name}.json")
@@ -909,26 +853,23 @@ def create_app():
             txt = (m.get('text') or '').strip()
             if not txt:
                 continue
-            label = 'РЎС‚СѓРґРµРЅС‚' if role == 'student' else ('Р›РµРєС‚РѕСЂ' if role == 'lecturer' else 'РЎРёСЃС‚РµРјР°')
-            label = 'РЎС‚СѓРґРµРЅС‚' if role == 'student' else ('Р›РµРєС‚РѕСЂ' if role == 'lecturer' else 'РЎРёСЃС‚РµРјР°')
+            label = 'Студент' if role == 'student' else ('Лектор' if role == 'lecturer' else 'Система')
             prev.append(f"{label}: {txt}")
         prev_text = "\n".join(prev)
         if len(prev_text) > 8000:
             prev_text = prev_text[-8000:]
 
         # Compose user prompt
-        tpl = (config.get('prompts', {}) or {}).get('chat_user_template') or (
-            "Р›РµРєС†РёСЏ: {lecture}\nРљСЂР°С‚РєРѕРµ СЃРѕРґРµСЂР¶Р°РЅРёРµ: {summary}\n\nРњС‹ РЅР°С…РѕРґРёРјСЃСЏ РІ СЂР°Р·РґРµР»Рµ:\n{context}\n\nРџСЂРµРґС‹РґСѓС‰РёР№ РґРёР°Р»РѕРі:\n{history}\n\nРЈ СЃС‚СѓРґРµРЅС‚Р° РІРѕР·РЅРёРє РЅРѕРІС‹Р№ РІРѕРїСЂРѕСЃ: {question}"
-        )
+        tpl = get_prompt_template(config, 'chat_user_template')
         user_prompt = tpl.format(lecture=name, summary=summary_text, context=subs_text, history=prev_text, question=question)
 
         try:
             from openai import OpenAI
-            client = OpenAI(api_key=api_key, base_url=llm_config.get('openai_api_base', 'https://api.openai.com/v1'))
-            model = llm_config.get('openai_model') or 'gpt-5-nano'
-            system = (config.get('prompts', {}) or {}).get('chat_system') or "РўС‹ РІС‹СЃС‚СѓРїР°РµС€СЊ РІ СЂРѕР»Рё Р»РµРєС‚РѕСЂР°, РѕС‚РІРµС‡Р°Р№ С‡РµС‚РєРѕ Рё РїРѕ РґРµР»Сѓ."
+            client = OpenAI(api_key=api_key, base_url=get_llm_setting(llm_config, 'openai_api_base'))
+            model = get_llm_setting(llm_config, 'openai_model')
+            system = get_prompt_template(config, 'chat_system')
             prompt = f"{system}\n\n{user_prompt}"
-            # Р‘РµР· temperature (РјРѕРіСѓС‚ Р±С‹С‚СЊ РјРѕРґРµР»Рё, РЅРµ РїРѕРґРґРµСЂР¶РёРІР°СЋС‰РёРµ РїР°СЂР°РјРµС‚СЂ)
+            # Без temperature (могут быть модели, не поддерживающие параметр)
             last_err = None
             answer = ""
             # Log request payload fully
@@ -939,14 +880,15 @@ def create_app():
             if answer:
                 append_log(name, {"type": "chat_response", "time": now, "content": answer})
                 return jsonify({"answer": answer})
+            else:
                 err_text = "Не удалось получить ответ"
                 append_log(name, {"type": "error", "time": now, "content": err_text})
                 return jsonify({"answer": "Ошибка обращения к LLM"}), 200
-                return jsonify({"answer": "РћС€РёР±РєР° РѕР±СЂР°С‰РµРЅРёСЏ Рє LLM"}), 200
+                return jsonify({"answer": "Ошибка обращения к LLM"}), 200
         except Exception as e:
             now = datetime.now().isoformat(timespec='seconds')
             append_log(name, {"type": "error", "time": now, "content": str(e)})
-            return jsonify({"answer": "РћС€РёР±РєР° РѕР±СЂР°С‰РµРЅРёСЏ Рє LLM"}), 200
+            return jsonify({"answer": "Ошибка обращения к LLM"}), 200
 
     # Single video route: open specific existing video directly
     @app.route('/<path:filename>')
@@ -974,14 +916,8 @@ if __name__ == '__main__':
     application = create_app()
     # The host and port can be customised via environment variables; fall back to
     # config.json or defaults if not provided.
-    # Загружаем config для чтения настроек сервера
     base_dir = os.path.abspath(os.path.dirname(__file__))
-    config_path = os.path.join(base_dir, 'config.json')
-    server_config = {}
-    if os.path.exists(config_path):
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config_data = json.load(f)
-            server_config = config_data.get('server', {})
+    server_config = load_config(base_dir).get('server', {})
     host = os.environ.get('FLASK_RUN_HOST', server_config.get('host', '0.0.0.0'))
     port = int(os.environ.get('FLASK_RUN_PORT', server_config.get('port', 5001)))
     application.run(host=host, port=port, debug=True)

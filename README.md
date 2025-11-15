@@ -95,6 +95,7 @@ webapp/
   - `VIDEOAPP_WHISPER_MODEL`
   - `VIDEOAPP_WHISPER_LANGUAGE`
   - `VIDEOAPP_CORS_ORIGINS` — список источников через запятую (например `http://localhost:8080,http://127.0.0.1:8080`)
+  - `VIDEOAPP_DISABLE_CORS` — установите в `true`, `1` или `yes`, чтобы полностью отключить Flask-CORS (по умолчанию CORS включён)
 - Любая настройка из списка `VIDEOAPP_*` берётся сначала из переменных окружения / `.env`, затем из `config.json`, и только потом проваливается к значениям по умолчанию в коде.
 
 ### Заметки
