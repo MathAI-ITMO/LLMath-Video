@@ -7,6 +7,9 @@ import subprocess
 import threading
 from datetime import datetime
 from typing import Dict, Iterable, Optional
+import av
+from av.audio.resampler import AudioResampler
+
 
 from .llm import (
     build_timecoded_transcript,
@@ -15,7 +18,6 @@ from .llm import (
     transcribe_audio,
 )
 from .storage import LogStore, SummaryStore
-
 
 class ProcessingService:
     def __init__(
@@ -42,6 +44,18 @@ class ProcessingService:
         if not force:
             if not self._needs_work(video_path):
                 return
+        try:
+            name = os.path.basename(video_path)
+            self.append_log(
+                name,
+                {
+                    "type": "info",
+                    "time": datetime.now().isoformat(timespec="seconds"),
+                    "content": "queue: added to processing",
+                },
+            )
+        except Exception:
+            pass
         with self._lock:
             if key in self.processing_flags:
                 return
@@ -74,6 +88,14 @@ class ProcessingService:
         summary_path = os.path.join(self.dirs["summaries"], f"{name}.txt")
         sugg_path = os.path.join(self.dirs["suggestions"], f"{name}.json")
 
+        self.append_log(
+            name,
+            {
+                "type": "info",
+                "time": datetime.now().isoformat(timespec="seconds"),
+                "content": f"worker_start: save_path={save_path}",
+            },
+        )
         try:
             try:
                 if not os.path.isfile(mp3_path):
@@ -87,6 +109,23 @@ class ProcessingService:
                     )
                     extract_audio_to_mp3(
                         save_path, self.dirs["audio"], self.dirs["base"]
+                    )
+                    self.append_log(
+                        name,
+                        {
+                            "type": "info",
+                            "time": datetime.now().isoformat(timespec="seconds"),
+                            "content": f"extract_audio_done: {mp3_path}",
+                        },
+                    )
+                else:
+                    self.append_log(
+                        name,
+                        {
+                            "type": "info",
+                            "time": datetime.now().isoformat(timespec="seconds"),
+                            "content": "extract_audio_skip: mp3 already exists",
+                        },
                     )
             except Exception as e:
                 self.append_log(
@@ -106,7 +145,7 @@ class ProcessingService:
                         {
                             "type": "info",
                             "time": datetime.now().isoformat(timespec="seconds"),
-                            "content": "transcribe",
+                            "content": "transcribe_start",
                         },
                     )
                     segments = transcribe_audio(
@@ -116,6 +155,32 @@ class ProcessingService:
                         os.makedirs(self.dirs["subtitles"], exist_ok=True)
                         with open(subs_json_path, "w", encoding="utf-8") as f:
                             json.dump({"segments": segments}, f, ensure_ascii=False)
+                        self.append_log(
+                            name,
+                            {
+                                "type": "info",
+                                "time": datetime.now().isoformat(timespec="seconds"),
+                                "content": f"transcribe_done: segments={len(segments)}",
+                            },
+                        )
+                    else:
+                        self.append_log(
+                            name,
+                            {
+                                "type": "error",
+                                "time": datetime.now().isoformat(timespec="seconds"),
+                                "content": "transcribe_empty: no segments returned",
+                            },
+                        )
+                elif os.path.isfile(subs_json_path):
+                    self.append_log(
+                        name,
+                        {
+                            "type": "info",
+                            "time": datetime.now().isoformat(timespec="seconds"),
+                            "content": "transcribe_skip: subtitles already exist",
+                        },
+                    )
             except Exception as e:
                 self.append_log(
                     name,
@@ -132,18 +197,51 @@ class ProcessingService:
                         segments = (json.load(f).get("segments") or [])
                 except Exception:
                     segments = []
+                self.append_log(
+                    name,
+                    {
+                        "type": "info",
+                        "time": datetime.now().isoformat(timespec="seconds"),
+                        "content": f"subtitles_loaded: segments={len(segments)}",
+                    },
+                )
             full_text = " ".join(
                 [(s or {}).get("text", "") for s in (segments or [])]
             ).strip()
 
             try:
                 if full_text and not os.path.isfile(summary_path):
+                    self.append_log(
+                        name,
+                        {
+                            "type": "info",
+                            "time": datetime.now().isoformat(timespec="seconds"),
+                            "content": "summary_start",
+                        },
+                    )
                     summary_text = summarize_with_llm(
                         full_text, name, self.llm_config, self.config, self.append_log
                     )
                     if summary_text:
                         os.makedirs(self.dirs["summaries"], exist_ok=True)
                         self.summary_store.write(name, summary_text)
+                        self.append_log(
+                            name,
+                            {
+                                "type": "info",
+                                "time": datetime.now().isoformat(timespec="seconds"),
+                                "content": f"summary_done: chars={len(summary_text)}",
+                            },
+                        )
+                elif os.path.isfile(summary_path):
+                    self.append_log(
+                        name,
+                        {
+                            "type": "info",
+                            "time": datetime.now().isoformat(timespec="seconds"),
+                            "content": "summary_skip: already exists",
+                        },
+                    )
             except Exception as e:
                 self.append_log(
                     name,
@@ -156,6 +254,14 @@ class ProcessingService:
 
             try:
                 if segments and not os.path.isfile(sugg_path):
+                    self.append_log(
+                        name,
+                        {
+                            "type": "info",
+                            "time": datetime.now().isoformat(timespec="seconds"),
+                            "content": "suggestions_start",
+                        },
+                    )
                     timecoded = build_timecoded_transcript(segments)
                     items = generate_suggestions_with_llm(
                         timecoded,
@@ -169,6 +275,23 @@ class ProcessingService:
                         os.makedirs(self.dirs["suggestions"], exist_ok=True)
                         with open(sugg_path, "w", encoding="utf-8") as f:
                             json.dump({"items": items}, f, ensure_ascii=False)
+                        self.append_log(
+                            name,
+                            {
+                                "type": "info",
+                                "time": datetime.now().isoformat(timespec="seconds"),
+                                "content": f"suggestions_done: items={len(items)}",
+                            },
+                        )
+                elif os.path.isfile(sugg_path):
+                    self.append_log(
+                        name,
+                        {
+                            "type": "info",
+                            "time": datetime.now().isoformat(timespec="seconds"),
+                            "content": "suggestions_skip: already exists",
+                        },
+                    )
             except Exception as e:
                 self.append_log(
                     name,
@@ -181,35 +304,49 @@ class ProcessingService:
         finally:
             with self._lock:
                 self.processing_flags.discard(os.path.abspath(save_path))
+            self.append_log(
+                name,
+                {
+                    "type": "info",
+                    "time": datetime.now().isoformat(timespec="seconds"),
+                    "content": "worker_finish",
+                },
+            )
 
 
 def extract_audio_to_mp3(video_path: str, out_dir: str, base_dir: str) -> str:
     base = os.path.splitext(os.path.basename(video_path))[0]
     out_path = os.path.join(out_dir, f"{base}.mp3")
     os.makedirs(out_dir, exist_ok=True)
-    ffmpeg_bin = shutil.which("ffmpeg") or os.path.join(base_dir, "tools", "ffmpeg.exe")
-    cmd = [
-        ffmpeg_bin,
-        "-y",
-        "-i",
-        video_path,
-        "-vn",
-        "-ac",
-        "1",
-        "-ar",
-        "16000",
-        "-codec:a",
-        "libmp3lame",
-        "-b:a",
-        "48k",
-        out_path,
-    ]
-    result = subprocess.run(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False
-    )
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"ffmpeg failed: {result.stderr[:200].decode('utf-8', 'ignore')}"
-        )
+    in_container = av.open(video_path)
+    try:
+        audio_stream = None
+        for s in in_container.streams:
+            if s.type == "audio":
+                audio_stream = s
+                break
+        if audio_stream is None:
+            raise RuntimeError("No audio stream found in input")
+        out_container = av.open(out_path, mode="w")
+        try:
+            out_stream = out_container.add_stream("mp3", rate=16000)
+            out_stream.layout = "mono"
+            out_stream.bit_rate = 48000
+            resampler = AudioResampler(format="s16", layout="mono", rate=16000)
+            for packet in in_container.demux(audio_stream):
+                for frame in packet.decode():
+                    resampled = resampler.resample(frame)
+                    if resampled is None:
+                        continue
+                    frames = resampled if isinstance(resampled, list) else [resampled]
+                    for rf in frames:
+                        for out_packet in out_stream.encode(rf):
+                            out_container.mux(out_packet)
+            for out_packet in out_stream.encode(None):
+                out_container.mux(out_packet)
+        finally:
+            out_container.close()
+    finally:
+        in_container.close()
     return out_path
 

@@ -68,26 +68,6 @@ def register(
         last_err = None
         for attempt in range(3):
             try:
-                if hasattr(client, "responses"):
-                    resp = client.responses.create(
-                        model=model,
-                        input=[
-                            {
-                                "role": "user",
-                                "content": [
-                                    {
-                                        "type": "input_text",
-                                        "text": f"{system}\n\n{user_prompt}",
-                                    },
-                                    {"type": "input_image", "image_url": image_data_url},
-                                ],
-                            }
-                        ],
-                    )
-                    answer = getattr(resp, "output_text", None) or resp.output[
-                        0
-                    ].content[0].text
-                    break
                 chat = client.chat.completions.create(
                     model=model,
                     messages=[

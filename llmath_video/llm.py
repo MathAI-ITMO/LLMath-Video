@@ -8,13 +8,15 @@ import subprocess
 import time
 from datetime import datetime
 from typing import Callable, Dict, List, Sequence
+from openai import OpenAI
+import av
 
 from config_manager import get_llm_setting, get_prompt_template
 
 try:
-    from openai import OpenAI
-except Exception:  # pragma: no cover - optional dependency during tests
-    OpenAI = None  # type: ignore
+    import whisper
+except Exception:
+    whisper = None
 
 
 def get_openai_client(
@@ -36,12 +38,6 @@ def call_openai_text(client, model: str, input_text: str) -> str:
     last_err = None
     for attempt in range(3):
         try:
-            if hasattr(client, "responses"):
-                resp = client.responses.create(model=model, input=input_text)
-                return (
-                    getattr(resp, "output_text", None)
-                    or resp.output[0].content[0].text
-                )
             chat = client.chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": input_text}],
@@ -60,22 +56,16 @@ def call_openai_text(client, model: str, input_text: str) -> str:
 
 
 def _probe_duration(audio_path: str, base_dir: str) -> float:
+    container = av.open(audio_path)
     try:
-        ff = shutil.which("ffmpeg") or os.path.join(base_dir, "tools", "ffmpeg.exe")
-        p = subprocess.run(
-            [ff, "-i", audio_path],
-            stderr=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-        )
-        m = re.search(rb"Duration: (\d+):(\d+):(\d+\.\d+)", p.stderr)
-        if m:
-            h = int(m.group(1))
-            mi = int(m.group(2))
-            se = float(m.group(3))
-            return float(h * 3600 + mi * 60 + se)
-    except Exception:
-        pass
-    return 0.0
+        if container.duration is not None:
+            return float(container.duration) / av.time_base
+        for stream in container.streams:
+            if stream.type == "audio" and stream.duration and stream.time_base:
+                return float(stream.duration * stream.time_base)
+        return 0.0
+    finally:
+        container.close()
 
 
 def _fallback_segments(full_text: str, base_dir: str, audio_path: str) -> list:
@@ -109,8 +99,6 @@ def _fallback_segments(full_text: str, base_dir: str, audio_path: str) -> list:
 
 def transcribe_with_openai(audio_path: str, llm_config: Dict, base_dir: str):
     api_key = llm_config.get("openai_api_key")
-    if not api_key or OpenAI is None:
-        return []
     client = get_openai_client(
         llm_config, base_key="openai_stt_api_base", key_name="openai_stt_api_key"
     )
@@ -130,7 +118,7 @@ def transcribe_with_openai(audio_path: str, llm_config: Dict, base_dir: str):
                 raw_segments = getattr(resp, "segments", None)
                 if raw_segments is None:
                     try:
-                        raw_segments = resp.get("segments")  # type: ignore[attr-defined]
+                        raw_segments = resp.get("segments")
                     except Exception:
                         raw_segments = None
                 segments = []
@@ -150,7 +138,7 @@ def transcribe_with_openai(audio_path: str, llm_config: Dict, base_dir: str):
                 full_text = (getattr(resp, "text", "") or "").strip()
                 if not full_text:
                     try:
-                        full_text = (resp.get("text") or "").strip()  # type: ignore[attr-defined]
+                        full_text = (resp.get("text") or "").strip()
                     except Exception:
                         full_text = ""
             except Exception:
@@ -167,7 +155,42 @@ def transcribe_with_openai(audio_path: str, llm_config: Dict, base_dir: str):
         return []
 
 
+def transcribe_with_whisper_local(audio_path: str, llm_config: Dict, base_dir: str):
+    """
+    Local transcription using openai-whisper python package.
+    Returns list of {start, end, text} segment dicts or [] on failure.
+    """
+    try:
+        model_name = get_llm_setting(llm_config, "whisper_local_model") or "base"
+        language = (get_llm_setting(llm_config, "whisper_language") or "").strip() or None
+        model = whisper.load_model(model_name)
+        result = model.transcribe(audio_path, language=language)
+        segments: List[dict] = []
+        for seg in (result.get("segments") or []):
+            text = (seg.get("text") or "").strip()
+            if not text:
+                continue
+            try:
+                start = float(seg.get("start", 0.0))
+                end = float(seg.get("end", 0.0))
+            except Exception:
+                start = float(seg.get("start") or 0.0) if hasattr(seg, "get") else 0.0
+                end = float(seg.get("end") or 0.0) if hasattr(seg, "get") else 0.0
+            segments.append({"start": start, "end": end, "text": text})
+        if segments:
+            return segments
+        full_text = (result.get("text") or "").strip()
+        if not full_text:
+            return []
+        return _fallback_segments(full_text, base_dir, audio_path)
+    except Exception:
+        return []
+
+
 def transcribe_audio(audio_path: str, llm_config: Dict, base_dir: str):
+    mode = (get_llm_setting(llm_config, "stt_mode") or "api").strip().lower()
+    if mode == "local":
+        return transcribe_with_whisper_local(audio_path, llm_config, base_dir)
     return transcribe_with_openai(audio_path, llm_config, base_dir)
 
 
@@ -290,8 +313,11 @@ def generate_suggestions_with_llm(
     answer = ""
     for attempt in range(3):
         try:
-            resp = client.responses.create(model=model, input=user_prompt)
-            answer = getattr(resp, "output_text", None) or resp.output[0].content[0].text
+            chat = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": user_prompt}],
+            )
+            answer = (chat.choices[0].message.content or "").strip()
             break
         except Exception as e:
             last_err = e

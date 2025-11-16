@@ -23,6 +23,8 @@ LLM_DEFAULTS = {
     "openai_model": "gpt-5-nano",
     "openai_stt_model": "whisper-1",
     "whisper_language": "ru",
+    "stt_mode": "api",
+    "whisper_local_model": "base",
 }
 
 DATA_SUBDIRS = {
