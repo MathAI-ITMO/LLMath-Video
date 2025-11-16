@@ -5,6 +5,7 @@ import os
 from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Sequence
+import logging
 
 from flask import url_for
 from werkzeug.datastructures import FileStorage
@@ -154,6 +155,7 @@ class SuggestionStore:
 class LogStore:
     def __init__(self, directory: str):
         self.directory = directory
+        self.logger = logging.getLogger("llmath_video.logstore")
 
     def path_for(self, name: str) -> str:
         os.makedirs(self.directory, exist_ok=True)
@@ -162,9 +164,19 @@ class LogStore:
 
     def append(self, name: str, entry: dict):
         path = self.path_for(name)
+        line = json.dumps(dict(entry), ensure_ascii=False)
         try:
             with open(path, "a", encoding="utf-8") as f:
-                f.write(json.dumps(dict(entry), ensure_ascii=False) + "\n")
+                f.write(line + "\n")
+        except Exception:
+            pass
+        try:
+            safe = os.path.basename(name)
+            log_type = (entry or {}).get("type") or ""
+            if str(log_type).lower() == "error":
+                self.logger.error(f"[LOG:{safe}] {line}")
+            else:
+                self.logger.info(f"[LOG:{safe}] {line}")
         except Exception:
             pass
 

@@ -5,6 +5,7 @@ from flask_cors import CORS
 
 from config_manager import is_cors_disabled, load_config, resolve_cors_origins
 from llmath_video import load_settings
+from llmath_video.logging_setup import setup_logging
 from llmath_video.processing import ProcessingService
 from llmath_video.routes import content, llm_routes, main, media
 from llmath_video.storage import (
@@ -27,6 +28,7 @@ def create_app():
     )
     base_dir = os.path.abspath(os.path.dirname(__file__))
     settings = load_settings(base_dir)
+    setup_logging(settings.dirs.logs, level="INFO")
     app.config["APP_SETTINGS"] = settings.as_dict()
     app.config["JSON_AS_ASCII"] = False
 

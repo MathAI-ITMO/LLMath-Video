@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import logging
 
 from flask import Blueprint, jsonify, request, url_for
 
@@ -20,6 +21,7 @@ def register(
     config: dict,
 ):
     bp = Blueprint("llm_api", __name__)
+    logger = logging.getLogger("llmath_video.api")
 
     @bp.route("/api/explain_frame", methods=["POST"])
     def explain_frame():
@@ -106,6 +108,8 @@ def register(
             except Exception as e:
                 last_err = e
                 msg = str(e)
+                # Log full stack for debugging unexpected failures
+                logger.exception("explain_frame request failed: name=%s attempt=%s", name, attempt + 1)
                 if "429" in msg or "rate" in msg.lower():
                     import time
 
@@ -126,6 +130,7 @@ def register(
             )
             return jsonify({"answer": answer, "image_url": img_url_for_log})
         err_text = str(last_err) if last_err else "Неизвестная ошибка LLM"
+        logger.error("explain_frame error: name=%s err=%s", name, err_text)
         log_store.append(
             name,
             {"type": "error", "time": now, "content": err_text},
@@ -189,6 +194,7 @@ def register(
         except Exception as e:
             now = datetime.now().isoformat(timespec="seconds")
             log_store.append(name, {"type": "error", "time": now, "content": str(e)})
+            logger.exception("chat request failed: name=%s", name)
             return jsonify({"answer": "Ошибка обращения к LLM"}), 200
         now = datetime.now().isoformat(timespec="seconds")
         if answer:
@@ -201,6 +207,7 @@ def register(
             name,
             {"type": "error", "time": now, "content": "Не удалось получить ответ"},
         )
+        logger.error("chat error: name=%s err=%s", name, "Не удалось получить ответ")
         return jsonify({"answer": "Ошибка обращения к LLM"}), 200
 
     app.register_blueprint(bp)
