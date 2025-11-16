@@ -161,6 +161,7 @@ document.addEventListener('DOMContentLoaded', function () {
       const li = document.createElement('li');
       li.className = 'video-item';
       li.dataset.url = vid.url;
+      try { li.setAttribute('role','button'); li.tabIndex = 0; li.style.cursor = 'pointer'; } catch {}
       const name = document.createElement('span'); name.className = 'name'; name.textContent = vid.name;
       const del = document.createElement('button'); del.className = 'delete-video'; del.title = 'Удалить'; del.textContent = '×';
       del.addEventListener('click', async (e)=>{
@@ -168,7 +169,11 @@ document.addEventListener('DOMContentLoaded', function () {
         try { const resp = await fetch(`/video/${encodeURIComponent(vid.name)}`, { method: 'DELETE' }); if (!resp.ok) throw new Error('Не удалось удалить файл'); if (currentVideoName === vid.name) closeVideo(); fetchVideos(); } catch (err) { alert(err.message || 'Ошибка удаления'); }
       });
       li.appendChild(name); li.appendChild(del);
-      li.addEventListener('click', ()=> loadVideo(vid.url, vid.name));
+      li.addEventListener('click', (e)=>{ try{ e.preventDefault(); }catch{} loadVideo(vid.url, vid.name); });
+      // Prevent middle-click or auxiliary clicks from triggering navigation
+      li.addEventListener('auxclick', (e)=>{ try{ e.preventDefault(); e.stopPropagation(); }catch{} });
+      // Keyboard activation
+      li.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' ') { try{ e.preventDefault(); }catch{} loadVideo(vid.url, vid.name); } });
       videoList.appendChild(li);
     });
   }
@@ -282,6 +287,11 @@ document.addEventListener('DOMContentLoaded', function () {
   ['dragenter','dragover'].forEach(ev=> mainPanel.addEventListener(ev, e=>{ e.preventDefault(); e.stopPropagation(); if (dropLayer.style.display!=='none') dropLayer.classList.add('active'); }));
   ['dragleave','dragend','drop'].forEach(ev=> mainPanel.addEventListener(ev, e=>{ e.preventDefault(); e.stopPropagation(); dropLayer.classList.remove('active'); }));
   mainPanel.addEventListener('drop', e=>{ e.preventDefault(); e.stopPropagation(); const f=e.dataTransfer?.files; if(f && f.length>0) uploadFile(f[0]); });
+  // Guard against browser navigating to the dropped file if dropped outside main panel
+  ['dragover','drop'].forEach(ev=>{
+    window.addEventListener(ev, (e)=>{ e.preventDefault(); }, { passive:false });
+    document.addEventListener(ev, (e)=>{ e.preventDefault(); }, { passive:false });
+  });
 
   // Controls
   playPauseButton.addEventListener('click', ()=>{ if (videoElement.paused) videoElement.play(); else videoElement.pause(); });
@@ -420,13 +430,17 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   async function captureFrameWithMarker(norm){
-    const vw=videoElement.videoWidth||1280; const vh=videoElement.videoHeight||720;
-    const canvas=document.createElement("canvas"); canvas.width=vw; canvas.height=vh;
-    const ctx=canvas.getContext("2d"); ctx.drawImage(videoElement,0,0,vw,vh);
-    const cx=Math.max(0,Math.min(1,norm.x))*vw; const cy=Math.max(0,Math.min(1,norm.y))*vh;
-    const r=vh*0.15;
+    const srcW = videoElement.videoWidth||1280; const srcH = videoElement.videoHeight||720;
+    const scale = Math.min(1, 720 / (srcH||720));
+    const w = Math.round(srcW * scale) || 1280;
+    const h = Math.round(srcH * scale) || 720;
+    const canvas=document.createElement("canvas"); canvas.width=w; canvas.height=h;
+    const ctx=canvas.getContext("2d");
+    ctx.drawImage(videoElement, 0, 0, w, h);
+    const cx=Math.max(0,Math.min(1,norm.x))*w; const cy=Math.max(0,Math.min(1,norm.y))*h;
+    const r=h*0.15;
     ctx.fillStyle="rgba(255,0,0,0.5)"; ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
-    return { dataUrl: canvas.toDataURL("image/png") };
+    return { dataUrl: canvas.toDataURL("image/jpeg", 0.8) };
   }
   function showAnnotationPopover(_text, norm){ if(!videoLayer) return; const rect=videoLayer.getBoundingClientRect(); const marker=document.createElement('div'); marker.className='pulse-marker'; marker.style.left = `${norm.x*rect.width}px`; marker.style.top = `${norm.y*rect.height}px`; videoLayer.appendChild(marker); setTimeout(()=>{ if(marker&&marker.parentNode) marker.parentNode.removeChild(marker); }, 8400); }
 
