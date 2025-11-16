@@ -16,7 +16,10 @@ COPY requirements.txt .
 RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 
-COPY . .
+COPY app.py config_manager.py config.json ./
+COPY llmath_video/ ./llmath_video/
+COPY templates/ ./templates/
+COPY static/ ./static/
 
 ENV PORT=5001
 EXPOSE 5001
