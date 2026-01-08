@@ -13,11 +13,6 @@ import av
 
 from config_manager import get_llm_setting, get_prompt_template
 
-try:
-    import whisper
-except Exception:
-    whisper = None
-
 
 def get_openai_client(
     llm_config: Dict, *, base_key: str = "openai_api_base", key_name: str = "openai_api_key"
@@ -155,42 +150,7 @@ def transcribe_with_openai(audio_path: str, llm_config: Dict, base_dir: str):
         return []
 
 
-def transcribe_with_whisper_local(audio_path: str, llm_config: Dict, base_dir: str):
-    """
-    Local transcription using openai-whisper python package.
-    Returns list of {start, end, text} segment dicts or [] on failure.
-    """
-    try:
-        model_name = get_llm_setting(llm_config, "whisper_local_model") or "base"
-        language = (get_llm_setting(llm_config, "whisper_language") or "").strip() or None
-        model = whisper.load_model(model_name)
-        result = model.transcribe(audio_path, language=language)
-        segments: List[dict] = []
-        for seg in (result.get("segments") or []):
-            text = (seg.get("text") or "").strip()
-            if not text:
-                continue
-            try:
-                start = float(seg.get("start", 0.0))
-                end = float(seg.get("end", 0.0))
-            except Exception:
-                start = float(seg.get("start") or 0.0) if hasattr(seg, "get") else 0.0
-                end = float(seg.get("end") or 0.0) if hasattr(seg, "get") else 0.0
-            segments.append({"start": start, "end": end, "text": text})
-        if segments:
-            return segments
-        full_text = (result.get("text") or "").strip()
-        if not full_text:
-            return []
-        return _fallback_segments(full_text, base_dir, audio_path)
-    except Exception:
-        return []
-
-
 def transcribe_audio(audio_path: str, llm_config: Dict, base_dir: str):
-    mode = (get_llm_setting(llm_config, "stt_mode") or "api").strip().lower()
-    if mode == "local":
-        return transcribe_with_whisper_local(audio_path, llm_config, base_dir)
     return transcribe_with_openai(audio_path, llm_config, base_dir)
 
 

@@ -1,0 +1,36 @@
+version: '3.8'
+services:
+  speaches:
+    image: ghcr.io/speaches-ai/speaches:latest-cpu
+    restart: always
+    ports:
+      - 8003:8000
+    volumes:
+      - hf-hub-cache:/home/ubuntu/.cache/huggingface/hub
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/ || curl -f http://localhost:8000/v1/models || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  speaches-init:
+    image: curlimages/curl:latest
+    depends_on:
+      speaches:
+        condition: service_started
+    command: >
+      sh -c "
+      echo 'Waiting for speaches service to be ready...' &&
+      until curl -f http://speaches:8000/ > /dev/null 2>&1; do
+        echo 'Service not ready yet, waiting...' &&
+        sleep 5
+      done &&
+      echo 'Service is ready, running initialization curl...' &&
+      curl 'http://speaches:8000/v1/models/guillaumekln/faster-whisper-tiny' -X POST &&
+      echo 'Initialization complete'
+      "
+    restart: "no"
+
+volumes:
+  hf-hub-cache:
