@@ -19,6 +19,15 @@ jobs:
     permissions:
       contents: read
       packages: write
+    strategy:
+      matrix:
+        include:
+          - variant: full
+            include_whisper: "true"
+            tag_suffix: ""
+          - variant: nowhisper
+            include_whisper: "false"
+            tag_suffix: "-nowhisper"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -47,6 +56,8 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ steps.prep.outputs.name }}
+          flavor: |
+            suffix=${{ matrix.tag_suffix }}
           tags: |
             type=ref,event=branch
             type=ref,event=tag
@@ -62,4 +73,6 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            INCLUDE_WHISPER=${{ matrix.include_whisper }}
 
