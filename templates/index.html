@@ -11,6 +11,7 @@
     </script>
     <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
     <script>
+      window.BASE_PATH = {{ request.script_root|tojson }};
       window.AppConfig = {
         singleMode: {{ 'true' if single_name else 'false' }},
         singleName: {{ (single_name or '')|tojson }}

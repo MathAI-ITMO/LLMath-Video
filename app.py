@@ -3,7 +3,12 @@ import os
 from flask import Flask
 from flask_cors import CORS
 
-from config_manager import is_cors_disabled, load_config, resolve_cors_origins
+from config_manager import (
+    get_url_prefix,
+    is_cors_disabled,
+    load_config,
+    resolve_cors_origins,
+)
 from llmath_video import load_settings
 from llmath_video.logging_setup import setup_logging
 from llmath_video.processing import ProcessingService
@@ -16,6 +21,19 @@ from llmath_video.storage import (
     SummaryStore,
     VideoStore,
 )
+
+
+def _prefix_middleware(wsgi_app, prefix):
+    """WSGI middleware that mounts the app at a URL prefix (e.g. /some-path)."""
+
+    def wrapper(environ, start_response):
+        path = environ.get("PATH_INFO") or "/"
+        if path.startswith(prefix):
+            environ["SCRIPT_NAME"] = prefix
+            environ["PATH_INFO"] = path[len(prefix) :] or "/"
+        return wsgi_app(environ, start_response)
+
+    return wrapper
 
 
 def create_app():
@@ -90,6 +108,10 @@ def create_app():
         settings.llm_config,
         settings.config,
     )
+
+    url_prefix = get_url_prefix(load_config(base_dir))
+    if url_prefix:
+        app.wsgi_app = _prefix_middleware(app.wsgi_app, url_prefix)
 
     return app
 

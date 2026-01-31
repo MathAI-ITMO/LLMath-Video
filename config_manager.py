@@ -8,7 +8,8 @@ DEFAULT_CONFIG = {
     "subtitles_panel_enabled": True,
     "server": {
         "host": "0.0.0.0",
-        "port": 5001
+        "port": 5001,
+        "url_prefix": ""
     },
     "cors": {
         "origins": ["http://localhost:8080", "http://127.0.0.1:8080"]
@@ -167,4 +168,25 @@ def is_cors_disabled(env: Optional[MutableMapping[str, str]] = None) -> bool:
     source_env = env or os.environ
     flag = source_env.get("VIDEOAPP_DISABLE_CORS", "").strip().lower()
     return flag in {"1", "true", "yes", "on"}
+
+
+def get_url_prefix(
+    config: Mapping,
+    env: Optional[MutableMapping[str, str]] = None
+) -> str:
+    """
+    Return the URL prefix (subpath) for the app, e.g. "/some-path".
+    Used when serving the app at https://example.com/some-path.
+    No trailing slash; empty string when not set.
+    """
+    source_env = env or os.environ
+    prefix = source_env.get("VIDEOAPP_URL_PREFIX", "").strip()
+    if not prefix:
+        prefix = (config.get("server") or {}).get("url_prefix") or ""
+        prefix = (prefix or "").strip()
+    if not prefix:
+        return ""
+    if not prefix.startswith("/"):
+        prefix = "/" + prefix
+    return prefix.rstrip("/")
 
