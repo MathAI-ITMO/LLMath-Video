@@ -4,6 +4,14 @@ document.addEventListener('DOMContentLoaded', function () {
   const appCfg = (window.AppConfig || {});
   const BASE = (appCfg.basePath && String(appCfg.basePath).trim()) ? String(appCfg.basePath).replace(/\/$/, '') : '';
   function url(path) { return BASE + (path.startsWith('/') ? path : '/' + path); }
+  /** Resolve a URL from the server or a path so it includes the base path (for video src, image src, etc.). */
+  function resolveUrl(u) {
+    if (!BASE) return u;
+    const s = String(u || '').trim();
+    if (s.startsWith('http://') || s.startsWith('https://')) return s;
+    if (s.startsWith(BASE)) return s;
+    return BASE + (s.startsWith('/') ? s : '/' + s);
+  }
   // Elements
   const mainPanel = document.getElementById('main-panel');
   const dropLayer = document.getElementById('drop-layer');
@@ -224,7 +232,7 @@ document.addEventListener('DOMContentLoaded', function () {
     videoElement.pause(); videoElement.removeAttribute('src'); videoElement.load();
     dropLayer.style.display = 'none'; videoLayer.style.display = 'block'; controls.style.display = 'flex';
     instructions.textContent = name || defaultInstructions; currentVideoName = name || null;
-    videoElement.src = url; videoElement.load();
+    videoElement.src = resolveUrl(url); videoElement.load();
     try {
       const v = parseFloat((volumeSlider && volumeSlider.value) || '1'); if (!Number.isNaN(v)) videoElement.volume = Math.max(0, Math.min(1, v));
       const r = parseFloat((speedSelect && speedSelect.value) || '1'); if (!Number.isNaN(r)) videoElement.playbackRate = r;
@@ -385,7 +393,7 @@ document.addEventListener('DOMContentLoaded', function () {
   async function sendChat(textOverride){ const text=((typeof textOverride==='string' && textOverride.length)? textOverride : (chatInput.value||'')).trim(); if(!text||!currentVideoName) return; if(isBusy) return; appendMsg("student", text); if (!textOverride) chatInput.value=""; const {wrap, content}=appendLoader("lecturer"); isBusy = true; try{ chatInput.disabled = true; chatSend.disabled = true; if (explainBtn) explainBtn.disabled = true; }catch{} try { const body={ name: currentVideoName, currentTime: videoElement.currentTime||0, dialog, question: text }; const r=await fetch(url('/api/chat'),{method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}); if(!r.ok) throw new Error('Сервер вернул ошибку'); const d=await r.json(); const ans=(d&&d.answer)? d.answer : 'Нет ответа'; content.innerHTML = mdToHtml(ans); if (/ошибка/i.test(ans)) content.style.color='crimson'; if(window.MathJax&&window.MathJax.typesetPromise) window.MathJax.typesetPromise([wrap]).catch(()=>{}); } catch(e){ content.textContent = (e&&e.message)? e.message : 'Ошибка обращения к LLM'; content.style.color='crimson'; } finally { isBusy = false; try{ chatInput.disabled = false; chatSend.disabled = false; if (explainBtn) explainBtn.disabled = false; }catch{} } }
   // Summary & Log
   async function loadSummary(){ if(!currentVideoName) return; const el=document.getElementById('about-content'); let attempts=0; const pull = async ()=>{ try{ const r=await fetch(url(`/summary/${encodeURIComponent(currentVideoName)}`)); if(!r.ok) return; const d=await r.json(); const txt=(d&&d.text)? d.text : ''; if (el) { el.innerHTML = txt ? mdToHtml(txt) : 'Описание пока не готово'; if(window.MathJax&&window.MathJax.typesetPromise) window.MathJax.typesetPromise([el]).catch(()=>{}); } if(!txt && attempts<6){ attempts++; setTimeout(pull, 5000); } } catch{} }; pull(); }
-  async function loadLog(){ if(!currentVideoName) return; try{ const r=await fetch(url(`/logs/${encodeURIComponent(currentVideoName)}`)); if(!r.ok) return; const d=await r.json(); const el=document.getElementById('log-content'); if(!el) return; const entries=d?.entries||[]; el.innerHTML=''; entries.forEach(e=>{ const block=document.createElement('div'); block.style.margin='8px 0'; const head=document.createElement('div'); head.style.fontWeight='600'; head.textContent=`${e.time} | ${e.type}`; const body=document.createElement('div'); body.style.whiteSpace='pre-wrap'; body.textContent=e.content||''; block.appendChild(head); block.appendChild(body); if(e.image_url){ const img=document.createElement('img'); img.src=e.image_url; img.alt='кадр'; img.style.maxWidth='100%'; img.style.borderRadius='6px'; img.style.marginTop='6px'; block.appendChild(img);} el.appendChild(block); }); if(!entries.length) el.textContent='Пусто'; } catch{} }
+  async function loadLog(){ if(!currentVideoName) return; try{ const r=await fetch(url(`/logs/${encodeURIComponent(currentVideoName)}`)); if(!r.ok) return; const d=await r.json(); const el=document.getElementById('log-content'); if(!el) return; const entries=d?.entries||[]; el.innerHTML=''; entries.forEach(e=>{ const block=document.createElement('div'); block.style.margin='8px 0'; const head=document.createElement('div'); head.style.fontWeight='600'; head.textContent=`${e.time} | ${e.type}`; const body=document.createElement('div'); body.style.whiteSpace='pre-wrap'; body.textContent=e.content||''; block.appendChild(head); block.appendChild(body); if(e.image_url){ const img=document.createElement('img'); img.src=resolveUrl(e.image_url); img.alt='кадр'; img.style.maxWidth='100%'; img.style.borderRadius='6px'; img.style.marginTop='6px'; block.appendChild(img);} el.appendChild(block); }); if(!entries.length) el.textContent='Пусто'; } catch{} }
   btnClearLog?.addEventListener('click', async ()=>{ if(!currentVideoName) return; try { const r=await fetch(url(`/logs/${encodeURIComponent(currentVideoName)}`), { method:'DELETE' }); if (r.ok) loadLog(); } catch{} });
 
   // Frame analysis tooltip (fixed at click position)
@@ -495,7 +503,7 @@ document.addEventListener('DOMContentLoaded', function () {
   if ((appCfg.singleMode===true || appCfg.singleMode==='true') && (appCfg.singleName||'').trim()){
     const name = (appCfg.singleName||'').trim();
     // For direct links: do not autoplay; show centered start overlay
-    loadVideo(`/video/${encodeURIComponent(name)}`, name, false);
+    loadVideo(url(`/video/${encodeURIComponent(name)}`), name, false);
     try { if (videoElement) { videoElement.autoplay = false; videoElement.muted = false; } } catch{}
     const ov = ensureStartOverlay(); if (ov) ov.style.display = 'inline-block';
   } else {
