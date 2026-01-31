@@ -1,10 +1,9 @@
 /* Unified player UI script (ru) */
 
 document.addEventListener('DOMContentLoaded', function () {
-  const basePath = (typeof window !== 'undefined' && window.BASE_PATH) ? String(window.BASE_PATH) : '';
-  function apiPath(path) { return basePath + (path.startsWith('/') ? path : '/' + path); }
-
   const appCfg = (window.AppConfig || {});
+  const BASE = (appCfg.basePath && String(appCfg.basePath).trim()) ? String(appCfg.basePath).replace(/\/$/, '') : '';
+  function url(path) { return BASE + (path.startsWith('/') ? path : '/' + path); }
   // Elements
   const mainPanel = document.getElementById('main-panel');
   const dropLayer = document.getElementById('drop-layer');
@@ -146,7 +145,7 @@ document.addEventListener('DOMContentLoaded', function () {
   // Fetch/Render videos
   async function fetchVideos() {
     try {
-      const r = await fetch(apiPath('/videos'));
+      const r = await fetch(url('/videos'));
       if (!r.ok) throw new Error('Не удалось получить список видео');
       renderVideoList(await r.json());
     } catch (e) { console.error(e); }
@@ -169,7 +168,7 @@ document.addEventListener('DOMContentLoaded', function () {
       const del = document.createElement('button'); del.className = 'delete-video'; del.title = 'Удалить'; del.textContent = '×';
       del.addEventListener('click', async (e)=>{
         e.stopPropagation();
-        try { const resp = await fetch(apiPath(`/video/${encodeURIComponent(vid.name)}`), { method: 'DELETE' }); if (!resp.ok) throw new Error('Не удалось удалить файл'); if (currentVideoName === vid.name) closeVideo(); fetchVideos(); } catch (err) { alert(err.message || 'Ошибка удаления'); }
+        try { const resp = await fetch(url(`/video/${encodeURIComponent(vid.name)}`), { method: 'DELETE' }); if (!resp.ok) throw new Error('Не удалось удалить файл'); if (currentVideoName === vid.name) closeVideo(); fetchVideos(); } catch (err) { alert(err.message || 'Ошибка удаления'); }
       });
       li.appendChild(name); li.appendChild(del);
       li.addEventListener('click', (e)=>{ try{ e.preventDefault(); }catch{} loadVideo(vid.url, vid.name); });
@@ -189,7 +188,7 @@ document.addEventListener('DOMContentLoaded', function () {
   let allSuggestions = [];
   let lastRenderedKeys = new Set();
   function parseHHMMSS(s){ if(!s) return NaN; const m = String(s).trim().match(/^(\d{1,2}):(\d{2}):(\d{2})$/); if(!m) return NaN; return (+m[1])*3600 + (+m[2])*60 + (+m[3]); }
-  async function loadSuggestions(){ allSuggestions = []; lastRenderedKeys.clear(); if(!currentVideoName) { renderSuggestions([]); return; } try { const r = await fetch(apiPath(`/suggestions/${encodeURIComponent(currentVideoName)}`)); if(!r.ok) { renderSuggestions([]); return; } const d = await r.json(); const items = Array.isArray(d?.items) ? d.items : []; allSuggestions = items.map((it,idx)=>({ key: `${idx}-${it.start}-${it.end}`, text: String(it.text||'').trim(), start: String(it.start||'').trim(), end: String(it.end||'').trim(), startSec: parseHHMMSS(it.start), endSec: parseHHMMSS(it.end) })).filter(it=> it.text && Number.isFinite(it.startSec) && Number.isFinite(it.endSec) && it.endSec>it.startSec); updateSuggestionsForTime(); } catch { renderSuggestions([]); } }
+  async function loadSuggestions(){ allSuggestions = []; lastRenderedKeys.clear(); if(!currentVideoName) { renderSuggestions([]); return; } try { const r = await fetch(url(`/suggestions/${encodeURIComponent(currentVideoName)}`)); if(!r.ok) { renderSuggestions([]); return; } const d = await r.json(); const items = Array.isArray(d?.items) ? d.items : []; allSuggestions = items.map((it,idx)=>({ key: `${idx}-${it.start}-${it.end}`, text: String(it.text||'').trim(), start: String(it.start||'').trim(), end: String(it.end||'').trim(), startSec: parseHHMMSS(it.start), endSec: parseHHMMSS(it.end) })).filter(it=> it.text && Number.isFinite(it.startSec) && Number.isFinite(it.endSec) && it.endSec>it.startSec); updateSuggestionsForTime(); } catch { renderSuggestions([]); } }
   function renderSuggestions(list){ if(!chatSuggestions) return; // fade out old
     try { Array.from(chatSuggestions.children).forEach(ch=>{ ch.classList.add('hiding'); setTimeout(()=>{ if(ch&&ch.parentNode) ch.parentNode.removeChild(ch); }, 180); }); } catch{}
     // add new
@@ -201,7 +200,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   async function ensureProcessed(name){
     try {
-      await fetch(apiPath('/api/ensure_processed'), { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name }) });
+      await fetch(url('/api/ensure_processed'), { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name }) });
     } catch {}
   }
   function pollSubtitlesUntil(name, maxAttempts=12, delayMs=5000){
@@ -282,11 +281,11 @@ document.addEventListener('DOMContentLoaded', function () {
     try { const logEl=document.getElementById('log-content'); if (logEl) logEl.textContent=''; } catch{}
     try { const aboutEl=document.getElementById('about-content'); if (aboutEl) aboutEl.textContent=''; } catch{}
     currentVideoName = null;
-    try { if (nameToClear) await fetch(apiPath(`/logs/${encodeURIComponent(nameToClear)}`), { method: 'DELETE' }); } catch{}
+    try { if (nameToClear) await fetch(url(`/logs/${encodeURIComponent(nameToClear)}`), { method: 'DELETE' }); } catch{}
   }
 
   // Upload via DnD
-  async function uploadFile(file){ showProcessing(true); setProcessingStep('extract'); const fd=new FormData(); fd.append('file', file); try { setTimeout(()=>setProcessingStep('transcribe'), 800); const r=await fetch(apiPath('/upload'),{method:'POST', body:fd}); const d=await r.json(); if(!r.ok) throw new Error(d.error||'Ошибка загрузки'); setProcessingStep('summarize'); loadVideo(d.url, d.name); fetchVideos(); } catch(e){ alert(e.message||'Произошла ошибка при загрузке'); } finally { setTimeout(()=>showProcessing(false), 600); } }
+  async function uploadFile(file){ showProcessing(true); setProcessingStep('extract'); const fd=new FormData(); fd.append('file', file); try { setTimeout(()=>setProcessingStep('transcribe'), 800); const r=await fetch(url('/upload'),{method:'POST', body:fd}); const d=await r.json(); if(!r.ok) throw new Error(d.error||'Ошибка загрузки'); setProcessingStep('summarize'); loadVideo(d.url, d.name); fetchVideos(); } catch(e){ alert(e.message||'Произошла ошибка при загрузке'); } finally { setTimeout(()=>showProcessing(false), 600); } }
   ['dragenter','dragover'].forEach(ev=> mainPanel.addEventListener(ev, e=>{ e.preventDefault(); e.stopPropagation(); if (dropLayer.style.display!=='none') dropLayer.classList.add('active'); }));
   ['dragleave','dragend','drop'].forEach(ev=> mainPanel.addEventListener(ev, e=>{ e.preventDefault(); e.stopPropagation(); dropLayer.classList.remove('active'); }));
   mainPanel.addEventListener('drop', e=>{ e.preventDefault(); e.stopPropagation(); const f=e.dataTransfer?.files; if(f && f.length>0) uploadFile(f[0]); });
@@ -359,7 +358,7 @@ document.addEventListener('DOMContentLoaded', function () {
   videoElement.addEventListener('timeupdate', ()=>{ if(!subtitlePanel||!currentSubtitles.length) return; const t=videoElement.currentTime; const idx=currentSubtitles.findIndex(s=> t>=s.start && t<s.end); highlightSubtitle(idx); });
   function renderSubtitles(subs){ if(!subtitleList) return; while(subtitleList.firstChild) subtitleList.removeChild(subtitleList.firstChild); subs.forEach((s,i)=>{ const li=document.createElement('li'); li.textContent = s.text; li.dataset.index=i; li.addEventListener('click', ()=>{ videoElement.currentTime = s.start+0.01; }); subtitleList.appendChild(li); }); }
   function highlightSubtitle(idx){ if(!subtitleList) return; const items=subtitleList.querySelectorAll('li'); items.forEach((li,i)=> li.classList.toggle('active', i===idx)); if(idx>=0){ const active=items[idx]; if(active&&subtitlePanel){ const pr=subtitlePanel.getBoundingClientRect(); const ir=active.getBoundingClientRect(); const above=ir.top<pr.top+8; const below=ir.bottom>pr.bottom-8; if(above) subtitlePanel.scrollTop += (ir.top-pr.top-8); else if(below) subtitlePanel.scrollTop += (ir.bottom-pr.bottom+8); } } }
-  async function fetchSubtitlesFor(name){ if(!name) return []; try { const r=await fetch(apiPath(`/subtitles/${encodeURIComponent(name)}.json`)); if(!r.ok) return []; const d=await r.json(); return Array.isArray(d?.segments)? d.segments : []; } catch { return []; } }
+  async function fetchSubtitlesFor(name){ if(!name) return []; try { const r=await fetch(url(`/subtitles/${encodeURIComponent(name)}.json`)); if(!r.ok) return []; const d=await r.json(); return Array.isArray(d?.segments)? d.segments : []; } catch { return []; } }
 
   // Overlay
   function showProcessing(v){ if(processingOverlay) processingOverlay.style.display=v?'flex':'none'; }
@@ -383,11 +382,11 @@ document.addEventListener('DOMContentLoaded', function () {
   chatInput?.addEventListener('keydown', (e)=>{ if(e.key==='Enter') sendChat(); });
   function appendMsg(role, text){ dialog.push({ role, text }); const wrap=document.createElement('div'); wrap.className='msg '+(role==='student'?'msg-student':'msg-lecturer'); const content=document.createElement('div'); content.style.whiteSpace='pre-wrap'; if(role==='lecturer') content.innerHTML = mdToHtml(text||''); else content.textContent = text||''; wrap.appendChild(content); chatMessages.appendChild(wrap); chatMessages.scrollTop = chatMessages.scrollHeight; if(role==='lecturer' && window.MathJax && window.MathJax.typesetPromise){ window.MathJax.typesetPromise([wrap]).catch(()=>{}); } return wrap; }
   function appendLoader(role){ const wrap=document.createElement("div"); wrap.className='msg '+(role==='student'?'msg-student':'msg-lecturer'); const content=document.createElement("div"); content.innerHTML = '<span class="typing-loader" aria-label="loading"><span></span><span></span><span></span></span>'; wrap.appendChild(content); chatMessages.appendChild(wrap); chatMessages.scrollTop = chatMessages.scrollHeight; return {wrap, content}; }
-  async function sendChat(textOverride){ const text=((typeof textOverride==='string' && textOverride.length)? textOverride : (chatInput.value||'')).trim(); if(!text||!currentVideoName) return; if(isBusy) return; appendMsg("student", text); if (!textOverride) chatInput.value=""; const {wrap, content}=appendLoader("lecturer"); isBusy = true; try{ chatInput.disabled = true; chatSend.disabled = true; if (explainBtn) explainBtn.disabled = true; }catch{} try { const body={ name: currentVideoName, currentTime: videoElement.currentTime||0, dialog, question: text }; const r=await fetch(apiPath('/api/chat'),{method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}); if(!r.ok) throw new Error('Сервер вернул ошибку'); const d=await r.json(); const ans=(d&&d.answer)? d.answer : 'Нет ответа'; content.innerHTML = mdToHtml(ans); if (/ошибка/i.test(ans)) content.style.color='crimson'; if(window.MathJax&&window.MathJax.typesetPromise) window.MathJax.typesetPromise([wrap]).catch(()=>{}); } catch(e){ content.textContent = (e&&e.message)? e.message : 'Ошибка обращения к LLM'; content.style.color='crimson'; } finally { isBusy = false; try{ chatInput.disabled = false; chatSend.disabled = false; if (explainBtn) explainBtn.disabled = false; }catch{} } }
+  async function sendChat(textOverride){ const text=((typeof textOverride==='string' && textOverride.length)? textOverride : (chatInput.value||'')).trim(); if(!text||!currentVideoName) return; if(isBusy) return; appendMsg("student", text); if (!textOverride) chatInput.value=""; const {wrap, content}=appendLoader("lecturer"); isBusy = true; try{ chatInput.disabled = true; chatSend.disabled = true; if (explainBtn) explainBtn.disabled = true; }catch{} try { const body={ name: currentVideoName, currentTime: videoElement.currentTime||0, dialog, question: text }; const r=await fetch(url('/api/chat'),{method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}); if(!r.ok) throw new Error('Сервер вернул ошибку'); const d=await r.json(); const ans=(d&&d.answer)? d.answer : 'Нет ответа'; content.innerHTML = mdToHtml(ans); if (/ошибка/i.test(ans)) content.style.color='crimson'; if(window.MathJax&&window.MathJax.typesetPromise) window.MathJax.typesetPromise([wrap]).catch(()=>{}); } catch(e){ content.textContent = (e&&e.message)? e.message : 'Ошибка обращения к LLM'; content.style.color='crimson'; } finally { isBusy = false; try{ chatInput.disabled = false; chatSend.disabled = false; if (explainBtn) explainBtn.disabled = false; }catch{} } }
   // Summary & Log
-  async function loadSummary(){ if(!currentVideoName) return; const el=document.getElementById('about-content'); let attempts=0; const pull = async ()=>{ try{ const r=await fetch(apiPath(`/summary/${encodeURIComponent(currentVideoName)}`)); if(!r.ok) return; const d=await r.json(); const txt=(d&&d.text)? d.text : ''; if (el) { el.innerHTML = txt ? mdToHtml(txt) : 'Описание пока не готово'; if(window.MathJax&&window.MathJax.typesetPromise) window.MathJax.typesetPromise([el]).catch(()=>{}); } if(!txt && attempts<6){ attempts++; setTimeout(pull, 5000); } } catch{} }; pull(); }
-  async function loadLog(){ if(!currentVideoName) return; try{ const r=await fetch(apiPath(`/logs/${encodeURIComponent(currentVideoName)}`)); if(!r.ok) return; const d=await r.json(); const el=document.getElementById('log-content'); if(!el) return; const entries=d?.entries||[]; el.innerHTML=''; entries.forEach(e=>{ const block=document.createElement('div'); block.style.margin='8px 0'; const head=document.createElement('div'); head.style.fontWeight='600'; head.textContent=`${e.time} | ${e.type}`; const body=document.createElement('div'); body.style.whiteSpace='pre-wrap'; body.textContent=e.content||''; block.appendChild(head); block.appendChild(body); if(e.image_url){ const img=document.createElement('img'); img.src=e.image_url; img.alt='кадр'; img.style.maxWidth='100%'; img.style.borderRadius='6px'; img.style.marginTop='6px'; block.appendChild(img);} el.appendChild(block); }); if(!entries.length) el.textContent='Пусто'; } catch{} }
-  btnClearLog?.addEventListener('click', async ()=>{ if(!currentVideoName) return; try { const r=await fetch(apiPath(`/logs/${encodeURIComponent(currentVideoName)}`), { method:'DELETE' }); if (r.ok) loadLog(); } catch{} });
+  async function loadSummary(){ if(!currentVideoName) return; const el=document.getElementById('about-content'); let attempts=0; const pull = async ()=>{ try{ const r=await fetch(url(`/summary/${encodeURIComponent(currentVideoName)}`)); if(!r.ok) return; const d=await r.json(); const txt=(d&&d.text)? d.text : ''; if (el) { el.innerHTML = txt ? mdToHtml(txt) : 'Описание пока не готово'; if(window.MathJax&&window.MathJax.typesetPromise) window.MathJax.typesetPromise([el]).catch(()=>{}); } if(!txt && attempts<6){ attempts++; setTimeout(pull, 5000); } } catch{} }; pull(); }
+  async function loadLog(){ if(!currentVideoName) return; try{ const r=await fetch(url(`/logs/${encodeURIComponent(currentVideoName)}`)); if(!r.ok) return; const d=await r.json(); const el=document.getElementById('log-content'); if(!el) return; const entries=d?.entries||[]; el.innerHTML=''; entries.forEach(e=>{ const block=document.createElement('div'); block.style.margin='8px 0'; const head=document.createElement('div'); head.style.fontWeight='600'; head.textContent=`${e.time} | ${e.type}`; const body=document.createElement('div'); body.style.whiteSpace='pre-wrap'; body.textContent=e.content||''; block.appendChild(head); block.appendChild(body); if(e.image_url){ const img=document.createElement('img'); img.src=e.image_url; img.alt='кадр'; img.style.maxWidth='100%'; img.style.borderRadius='6px'; img.style.marginTop='6px'; block.appendChild(img);} el.appendChild(block); }); if(!entries.length) el.textContent='Пусто'; } catch{} }
+  btnClearLog?.addEventListener('click', async ()=>{ if(!currentVideoName) return; try { const r=await fetch(url(`/logs/${encodeURIComponent(currentVideoName)}`), { method:'DELETE' }); if (r.ok) loadLog(); } catch{} });
 
   // Frame analysis tooltip (fixed at click position)
   videoLayer.addEventListener('click', (e)=>{
@@ -427,7 +426,7 @@ document.addEventListener('DOMContentLoaded', function () {
       if (wrap){ wrap.dataset.kind='frame'; wrap.dataset.normx=String(lastClickRel.x); wrap.dataset.normy=String(lastClickRel.y); }
       // lock UI while waiting
       isBusy = true; try{ chatInput.disabled = true; chatSend.disabled = true; if (newBtn) newBtn.disabled = true; }catch{}
-      try { const r=await fetch(apiPath('/api/explain_frame'),{method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name: currentVideoName, currentTime: videoElement.currentTime||0, image: shot.dataUrl })}); if(!r.ok) throw new Error('Сервер вернул ошибку при анализе кадра'); const d=await r.json(); const ans=(d&&d.answer)? d.answer : 'Нет ответа'; content.innerHTML = mdToHtml(ans); if (/ошибка/i.test(ans)) content.style.color='crimson'; if(window.MathJax&&window.MathJax.typesetPromise) window.MathJax.typesetPromise([wrap]).catch(()=>{}); showAnnotationPopover(ans, lastClickRel); } catch(e){ content.textContent = (e&&e.message)? e.message : 'Ошибка обращения к LLM (кадр)'; content.style.color='crimson'; }
+      try { const r=await fetch(url('/api/explain_frame'),{method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name: currentVideoName, currentTime: videoElement.currentTime||0, image: shot.dataUrl })}); if(!r.ok) throw new Error('Сервер вернул ошибку при анализе кадра'); const d=await r.json(); const ans=(d&&d.answer)? d.answer : 'Нет ответа'; content.innerHTML = mdToHtml(ans); if (/ошибка/i.test(ans)) content.style.color='crimson'; if(window.MathJax&&window.MathJax.typesetPromise) window.MathJax.typesetPromise([wrap]).catch(()=>{}); showAnnotationPopover(ans, lastClickRel); } catch(e){ content.textContent = (e&&e.message)? e.message : 'Ошибка обращения к LLM (кадр)'; content.style.color='crimson'; }
       finally { isBusy = false; try{ chatInput.disabled = false; chatSend.disabled = false; if (newBtn) newBtn.disabled = false; }catch{} }
     });
   }
@@ -496,7 +495,7 @@ document.addEventListener('DOMContentLoaded', function () {
   if ((appCfg.singleMode===true || appCfg.singleMode==='true') && (appCfg.singleName||'').trim()){
     const name = (appCfg.singleName||'').trim();
     // For direct links: do not autoplay; show centered start overlay
-    loadVideo(apiPath(`/video/${encodeURIComponent(name)}`), name, false);
+    loadVideo(`/video/${encodeURIComponent(name)}`, name, false);
     try { if (videoElement) { videoElement.autoplay = false; videoElement.muted = false; } } catch{}
     const ov = ensureStartOverlay(); if (ov) ov.style.display = 'inline-block';
   } else {

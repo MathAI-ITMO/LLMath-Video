@@ -9,7 +9,7 @@ DEFAULT_CONFIG = {
     "server": {
         "host": "0.0.0.0",
         "port": 5001,
-        "url_prefix": ""
+        "base_path": ""
     },
     "cors": {
         "origins": ["http://localhost:8080", "http://127.0.0.1:8080"]
@@ -170,23 +170,15 @@ def is_cors_disabled(env: Optional[MutableMapping[str, str]] = None) -> bool:
     return flag in {"1", "true", "yes", "on"}
 
 
-def get_url_prefix(
-    config: Mapping,
-    env: Optional[MutableMapping[str, str]] = None
-) -> str:
-    """
-    Return the URL prefix (subpath) for the app, e.g. "/some-path".
-    Used when serving the app at https://example.com/some-path.
-    No trailing slash; empty string when not set.
-    """
+def get_base_path(config: Mapping, env: Optional[MutableMapping[str, str]] = None) -> str:
     source_env = env or os.environ
-    prefix = source_env.get("VIDEOAPP_URL_PREFIX", "").strip()
-    if not prefix:
-        prefix = (config.get("server") or {}).get("url_prefix") or ""
-        prefix = (prefix or "").strip()
-    if not prefix:
+    value = source_env.get("VIDEOAPP_BASE_PATH")
+    if value is not None:
+        path = value.strip()
+    else:
+        path = (config.get("server") or {}).get("base_path") or ""
+        path = path.strip() if isinstance(path, str) else ""
+    if not path:
         return ""
-    if not prefix.startswith("/"):
-        prefix = "/" + prefix
-    return prefix.rstrip("/")
+    return "/" + path.strip("/")
 
