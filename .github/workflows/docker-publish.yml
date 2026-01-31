@@ -22,15 +22,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-    strategy:
-      matrix:
-        include:
-          - variant: full
-            include_whisper: "true"
-            tag_suffix: ""
-          - variant: nowhisper
-            include_whisper: "false"
-            tag_suffix: "-nowhisper"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -63,7 +54,7 @@ jobs:
         with:
           images: ${{ steps.prep.outputs.name }}
           flavor: |
-            suffix=${{ matrix.tag_suffix }}
+            suffix=
           tags: |
             type=ref,event=branch
             type=ref,event=tag
@@ -81,5 +72,5 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            INCLUDE_WHISPER=${{ matrix.include_whisper }}
+            INCLUDE_WHISPER=false
 
