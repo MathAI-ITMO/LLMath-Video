@@ -8,7 +8,8 @@ DEFAULT_CONFIG = {
     "subtitles_panel_enabled": True,
     "server": {
         "host": "0.0.0.0",
-        "port": 5001
+        "port": 5001,
+        "base_path": ""
     },
     "cors": {
         "origins": ["http://localhost:8080", "http://127.0.0.1:8080"]
@@ -167,4 +168,17 @@ def is_cors_disabled(env: Optional[MutableMapping[str, str]] = None) -> bool:
     source_env = env or os.environ
     flag = source_env.get("VIDEOAPP_DISABLE_CORS", "").strip().lower()
     return flag in {"1", "true", "yes", "on"}
+
+
+def get_base_path(config: Mapping, env: Optional[MutableMapping[str, str]] = None) -> str:
+    source_env = env or os.environ
+    value = source_env.get("VIDEOAPP_BASE_PATH")
+    if value is not None:
+        path = value.strip()
+    else:
+        path = (config.get("server") or {}).get("base_path") or ""
+        path = path.strip() if isinstance(path, str) else ""
+    if not path:
+        return ""
+    return "/" + path.strip("/")
 

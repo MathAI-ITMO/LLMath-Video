@@ -3,7 +3,12 @@ import os
 from flask import Flask
 from flask_cors import CORS
 
-from config_manager import is_cors_disabled, load_config, resolve_cors_origins
+from config_manager import (
+    get_base_path,
+    is_cors_disabled,
+    load_config,
+    resolve_cors_origins,
+)
 from llmath_video import load_settings
 from llmath_video.logging_setup import setup_logging
 from llmath_video.processing import ProcessingService
@@ -16,6 +21,22 @@ from llmath_video.storage import (
     SummaryStore,
     VideoStore,
 )
+
+
+def _base_path_middleware(app_wsgi, base_path: str):
+    if not base_path:
+        return app_wsgi
+
+    def wrapper(environ, start_response):
+        # Always set SCRIPT_NAME when base_path is set so url_for() (e.g. static links) gets the prefix
+        environ["SCRIPT_NAME"] = base_path
+        path = environ.get("PATH_INFO", "") or "/"
+        if path.startswith(base_path):
+            remainder = path[len(base_path) :] or "/"
+            environ["PATH_INFO"] = remainder
+        return app_wsgi(environ, start_response)
+
+    return wrapper
 
 
 def create_app():
@@ -31,6 +52,11 @@ def create_app():
     setup_logging(settings.dirs.logs, level="INFO")
     app.config["APP_SETTINGS"] = settings.as_dict()
     app.config["JSON_AS_ASCII"] = False
+    base_path = get_base_path(settings.config)
+
+    @app.context_processor
+    def inject_base_path():
+        return {"base_path": base_path}
 
     if not is_cors_disabled():
         cors_origins = resolve_cors_origins(settings.config)
@@ -91,6 +117,7 @@ def create_app():
         settings.config,
     )
 
+    app.wsgi_app = _base_path_middleware(app.wsgi_app, base_path)
     return app
 
 

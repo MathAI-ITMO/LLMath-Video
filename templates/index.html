@@ -13,7 +13,8 @@
     <script>
       window.AppConfig = {
         singleMode: {{ 'true' if single_name else 'false' }},
-        singleName: {{ (single_name or '')|tojson }}
+        singleName: {{ (single_name or '')|tojson }},
+        basePath: {{ (base_path or '')|tojson }}
       };
     </script>
   </head>

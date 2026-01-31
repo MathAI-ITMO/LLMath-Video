@@ -10,9 +10,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends ffmpeg && \
-    rm -rf /var/lib/apt/lists/*
+ADD https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz /tmp/
+RUN apt-get update && apt-get install -y --no-install-recommends xz-utils && \
+    tar -xJf /tmp/ffmpeg-release-amd64-static.tar.xz -C /tmp/ && \
+    cp /tmp/ffmpeg-*-amd64-static/ffmpeg /usr/local/bin/ && \
+    cp /tmp/ffmpeg-*-amd64-static/ffprobe /usr/local/bin/ && \
+    rm -rf /tmp/ffmpeg* && apt-get remove -y xz-utils && apt-get autoremove -y && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 RUN pip install --upgrade pip && \
